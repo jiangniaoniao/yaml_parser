@@ -18,7 +18,7 @@ static uint32_t ip_to_uint32(const char* ip_str) {
     if (inet_aton(ip_str, &addr) == 0) {
         return 0;
     }
-    return addr.s_addr;
+    return ntohl(addr.s_addr);
 }
 
 // Count total connections across all switches
@@ -52,12 +52,12 @@ int convert_to_fpga_format(const topology_config_t* config, uint8_t** output_dat
     *output_data = buffer;
     *output_size = total_size;
     
-    // Build header
+    // Build header - 使用小端序简化Verilog读取
     fpga_config_header_t* header = (fpga_config_header_t*)buffer;
-    header->magic = 0x46475441;  // "ATGF" - FPGA ATG
-    header->version = 1;
-    header->total_connections = count_total_connections(config);
-    header->timestamp = (uint32_t)time(NULL);
+    header->magic = 0x41544746;              // "ATGF" - 小端序 0x41544746
+    header->version = 1;                      // 版本号 - 小端序
+    header->total_connections = count_total_connections(config);  // 连接数 - 小端序
+    header->timestamp = (uint32_t)time(NULL);   // 时间戳 - 小端序
     
     uint8_t* data_ptr = buffer + sizeof(fpga_config_header_t);
     
@@ -70,15 +70,33 @@ int convert_to_fpga_format(const topology_config_t* config, uint8_t** output_dat
             
             fpga_connection_entry_t* fpga_conn = (fpga_connection_entry_t*)data_ptr;
             
-            // Fill FPGA connection entry
-            fpga_conn->switch_id = htonl(sw->id);
-            fpga_conn->host_id = htonl(conn->host_id);
+            // Fill FPGA connection entry - 全部使用小端序
+            fpga_conn->switch_id = sw->id;              // 小端序
+            fpga_conn->host_id = conn->host_id;           // 小端序
+            
+            // IP地址转换为小端序（原ip_to_uint32返回网络字节序）
+            // uint32_t local_ip_net = ip_to_uint32(conn->my_ip);
+            // uint32_t peer_ip_net = ip_to_uint32(conn->peer_ip);
+            // fpga_conn->local_ip = ((local_ip_net & 0xFF) << 24) | 
+            //                      ((local_ip_net & 0xFF00) << 8) |
+            //                      ((local_ip_net & 0xFF0000) >> 8) |
+            //                      ((local_ip_net & 0xFF000000) >> 24);  // 网络字节序转小端序
             fpga_conn->local_ip = ip_to_uint32(conn->my_ip);
+            // fpga_conn->peer_ip = ((peer_ip_net & 0xFF) << 24) | 
+            //                     ((peer_ip_net & 0xFF00) << 8) |
+            //                     ((peer_ip_net & 0xFF0000) >> 8) |
+            //                     ((peer_ip_net & 0xFF000000) >> 24);  // 网络字节序转小端序
             fpga_conn->peer_ip = ip_to_uint32(conn->peer_ip);
-            fpga_conn->local_port = htons(conn->my_port);
-            fpga_conn->peer_port = htons(conn->peer_port);
-            fpga_conn->local_qp = htons(conn->my_qp);
-            fpga_conn->peer_qp = htons(conn->peer_qp);
+            
+            // 端口转换为小端序（原htons返回网络字节序）
+            // fpga_conn->local_port = ((conn->my_port & 0xFF) << 8) | (conn->my_port >> 8);  // 小端序
+            // fpga_conn->peer_port = ((conn->peer_port & 0xFF) << 8) | (conn->peer_port >> 8);  // 小端序
+            // fpga_conn->local_qp = ((conn->my_qp & 0xFF) << 8) | (conn->my_qp >> 8);        // 小端序
+            // fpga_conn->peer_qp = ((conn->peer_qp & 0xFF) << 8) | (conn->peer_qp >> 8);       // 小端序
+            fpga_conn->local_port = conn->my_port;
+            fpga_conn->peer_port = conn->peer_port;
+            fpga_conn->local_qp = conn->my_qp;
+            fpga_conn->peer_qp = conn->peer_qp;
             fpga_conn->up = (conn->up == CONN_UP) ? 1 : 0;
             memset(fpga_conn->reserved, 0, sizeof(fpga_conn->reserved));
             
