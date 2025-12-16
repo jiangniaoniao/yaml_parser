@@ -71,7 +71,7 @@ typedef struct {
     uint8_t local_mac[6];
     uint8_t peer_mac[6];
     uint8_t up;
-    uint8_t reserved[5];
+    uint8_t reserved[7];
 } __attribute__((packed)) fpga_connection_entry_t;
 
 // Error codes

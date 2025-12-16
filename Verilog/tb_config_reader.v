@@ -1,3 +1,25 @@
+`timescale 1ns / 1ps
+//////////////////////////////////////////////////////////////////////////////////
+// Company: 
+// Engineer: 
+// 
+// Create Date: 2025/12/15 20:50:44
+// Design Name: 
+// Module Name: tb_config_reader
+// Project Name: 
+// Target Devices: 
+// Tool Versions: 
+// Description: 
+// 
+// Dependencies: 
+// 
+// Revision:
+// Revision 0.01 - File Created
+// Additional Comments:
+// 
+//////////////////////////////////////////////////////////////////////////////////
+
+
 module tb_config_reader();
 
 //=============================================================================
@@ -32,13 +54,13 @@ reg                               read_connection;
 // 连接寄存器输出
 wire       [31:0]                  conn_switch_id;
 wire       [31:0]                  conn_host_id;
-wire       [31:0]                  conn_local_ip;
+wire       [31:0]                  conn_my_ip;
 wire       [31:0]                  conn_peer_ip;
-wire       [15:0]                  conn_local_port;
+wire       [15:0]                  conn_my_port;
 wire       [15:0]                  conn_peer_port;
-wire       [15:0]                  conn_local_qp;
+wire       [15:0]                  conn_my_qp;
 wire       [15:0]                  conn_peer_qp;
-wire       [47:0]                  conn_local_mac;
+wire       [47:0]                  conn_my_mac;
 wire       [47:0]                  conn_peer_mac;
 wire                               conn_up;
 wire                               conn_valid;
@@ -176,13 +198,13 @@ fpga_config_reader #(
     // 连接寄存器输出
     .conn_switch_id     (conn_switch_id),
     .conn_host_id       (conn_host_id),
-    .conn_local_ip      (conn_local_ip),
+    .conn_my_ip      (conn_my_ip),
     .conn_peer_ip       (conn_peer_ip),
-    .conn_local_port    (conn_local_port),
+    .conn_my_port    (conn_my_port),
     .conn_peer_port     (conn_peer_port),
-    .conn_local_qp      (conn_local_qp),
+    .conn_my_qp      (conn_my_qp),
     .conn_peer_qp       (conn_peer_qp),
-    .conn_local_mac     (conn_local_mac),
+    .conn_my_mac     (conn_my_mac),
     .conn_peer_mac      (conn_peer_mac),
     .conn_up           (conn_up),
     .conn_valid        (conn_valid)
@@ -235,13 +257,13 @@ initial begin
         $display("Connection 0 data:");
         $display("  Switch ID: %0d", conn_switch_id);
         $display("  Host ID: %0d", conn_host_id);
-        $display("  Local IP: 0x%08x", conn_local_ip);
+        $display("  Local IP: 0x%08x", conn_my_ip);
         $display("  Peer IP: 0x%08x", conn_peer_ip);
-        $display("  Local Port: %0d (0x%04x)", conn_local_port, conn_local_port);
+        $display("  Local Port: %0d (0x%04x)", conn_my_port, conn_my_port);
         $display("  Peer Port: %0d (0x%04x)", conn_peer_port, conn_peer_port);
-        $display("  Local QP: %0d", conn_local_qp);
+        $display("  Local QP: %0d", conn_my_qp);
         $display("  Peer QP: %0d", conn_peer_qp);
-        $display("  Local MAC: %012x", conn_local_mac);
+        $display("  Local MAC: %012x", conn_my_mac);
         $display("  Peer MAC: %012x", conn_peer_mac);
         $display("  Up: %0d", conn_up);
     end
@@ -262,8 +284,15 @@ initial begin
         $display("Connection 1 data:");
         $display("  Switch ID: %0d", conn_switch_id);
         $display("  Host ID: %0d", conn_host_id);
-        $display("  Local IP: 0x%08x", conn_local_ip);
+        $display("  Local IP: 0x%08x", conn_my_ip);
         $display("  Peer IP: 0x%08x", conn_peer_ip);
+        $display("  Local Port: %0d (0x%04x)", conn_my_port, conn_my_port);
+        $display("  Peer Port: %0d (0x%04x)", conn_peer_port, conn_peer_port);
+        $display("  Local QP: %0d", conn_my_qp);
+        $display("  Peer QP: %0d", conn_peer_qp);
+        $display("  Local MAC: %012x", conn_my_mac);
+        $display("  Peer MAC: %012x", conn_peer_mac);
+        $display("  Up: %0d", conn_up);
     end
     
     #(CLK_PERIOD * 50);
@@ -294,7 +323,7 @@ end
 // 超时保护
 //=============================================================================
 initial begin
-    #(CLK_PERIOD * 1000);  // 1000个时钟周期后超时
+    #(CLK_PERIOD * 50000);  // 1000个时钟周期后超时
     $display("TEST TIMEOUT!");
     $finish;
 end
