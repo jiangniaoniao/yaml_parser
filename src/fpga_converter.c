@@ -72,7 +72,6 @@ int convert_to_fpga_format(const topology_config_t* config, uint8_t** output_dat
             
             // Fill FPGA connection entry - 全部使用小端序
             fpga_conn->switch_id = sw->id;              // 小端序
-            fpga_conn->host_id = conn->host_id;           // 小端序
             
             // IP地址转换为小端序（原ip_to_uint32返回网络字节序）
             // uint32_t local_ip_net = ip_to_uint32(conn->my_ip);
@@ -95,10 +94,7 @@ int convert_to_fpga_format(const topology_config_t* config, uint8_t** output_dat
             // fpga_conn->peer_qp = ((conn->peer_qp & 0xFF) << 8) | (conn->peer_qp >> 8);       // 小端序
             fpga_conn->local_port = conn->my_port;
             fpga_conn->peer_port = conn->peer_port;
-            fpga_conn->local_qp = conn->my_qp;
-            fpga_conn->peer_qp = conn->peer_qp;
-            fpga_conn->up = (conn->up == CONN_UP) ? 1 : 0;
-            memset(fpga_conn->reserved, 0, sizeof(fpga_conn->reserved));
+            // memset(fpga_conn->reserved, 0, sizeof(fpga_conn->reserved));
             
             // Convert MAC addresses
             if (!mac_to_bytes(conn->my_mac, fpga_conn->local_mac)) {

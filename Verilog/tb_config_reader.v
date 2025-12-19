@@ -53,16 +53,12 @@ reg                               read_connection;
 
 // 连接寄存器输出
 wire       [31:0]                  conn_switch_id;
-wire       [31:0]                  conn_host_id;
 wire       [31:0]                  conn_my_ip;
 wire       [31:0]                  conn_peer_ip;
 wire       [15:0]                  conn_my_port;
 wire       [15:0]                  conn_peer_port;
-wire       [15:0]                  conn_my_qp;
-wire       [15:0]                  conn_peer_qp;
 wire       [47:0]                  conn_my_mac;
 wire       [47:0]                  conn_peer_mac;
-wire                               conn_up;
 wire                               conn_valid;
 
 // 存储器接口
@@ -74,7 +70,7 @@ reg [7:0]                         file_data [0:ROM_DEPTH-1];
 reg [31:0]                        actual_file_size;
 reg                               file_loaded;
 
-// 整数变量声明（Verilog要求提前声明）
+// 整数变量声明
 integer i;
 integer fd;
 integer bytes_read;
@@ -195,19 +191,15 @@ fpga_config_reader #(
     .conn_index         (conn_index),
     .read_connection    (read_connection),
     
-    // 连接寄存器输出
+    // 连接寄存器输出（新结构）
     .conn_switch_id     (conn_switch_id),
-    .conn_host_id       (conn_host_id),
     .conn_my_ip      (conn_my_ip),
     .conn_peer_ip       (conn_peer_ip),
     .conn_my_port    (conn_my_port),
     .conn_peer_port     (conn_peer_port),
-    .conn_my_qp      (conn_my_qp),
-    .conn_peer_qp       (conn_peer_qp),
     .conn_my_mac     (conn_my_mac),
     .conn_peer_mac      (conn_peer_mac),
-    .conn_up           (conn_up),
-    .conn_valid        (conn_valid)
+    .conn_valid         (conn_valid)
 );
 
 //=============================================================================
@@ -256,16 +248,28 @@ initial begin
         
         $display("Connection 0 data:");
         $display("  Switch ID: %0d", conn_switch_id);
-        $display("  Host ID: %0d", conn_host_id);
         $display("  Local IP: 0x%08x", conn_my_ip);
         $display("  Peer IP: 0x%08x", conn_peer_ip);
         $display("  Local Port: %0d (0x%04x)", conn_my_port, conn_my_port);
         $display("  Peer Port: %0d (0x%04x)", conn_peer_port, conn_peer_port);
-        $display("  Local QP: %0d", conn_my_qp);
-        $display("  Peer QP: %0d", conn_peer_qp);
         $display("  Local MAC: %012x", conn_my_mac);
         $display("  Peer MAC: %012x", conn_peer_mac);
-        $display("  Up: %0d", conn_up);
+        
+        // 以冒号分隔的格式显示MAC地址
+        $display("  Local MAC (formatted): %02x:%02x:%02x:%02x:%02x:%02x",
+                conn_my_mac[47:40],
+                conn_my_mac[39:32],
+                conn_my_mac[31:24],
+                conn_my_mac[23:16],
+                conn_my_mac[15:8],
+                conn_my_mac[7:0]);
+        $display("  Peer MAC (formatted): %02x:%02x:%02x:%02x:%02x:%02x",
+                conn_peer_mac[47:40],
+                conn_peer_mac[39:32],
+                conn_peer_mac[31:24],
+                conn_peer_mac[23:16],
+                conn_peer_mac[15:8],
+                conn_peer_mac[7:0]);
     end
     
     #(CLK_PERIOD * 20);
@@ -282,17 +286,48 @@ initial begin
         #(CLK_PERIOD * 5);
         
         $display("Connection 1 data:");
-        $display("  Switch ID: %0d", conn_switch_id);
-        $display("  Host ID: %0d", conn_host_id);
+       $display("  Switch ID: %0d", conn_switch_id);
         $display("  Local IP: 0x%08x", conn_my_ip);
         $display("  Peer IP: 0x%08x", conn_peer_ip);
         $display("  Local Port: %0d (0x%04x)", conn_my_port, conn_my_port);
         $display("  Peer Port: %0d (0x%04x)", conn_peer_port, conn_peer_port);
-        $display("  Local QP: %0d", conn_my_qp);
-        $display("  Peer QP: %0d", conn_peer_qp);
         $display("  Local MAC: %012x", conn_my_mac);
         $display("  Peer MAC: %012x", conn_peer_mac);
-        $display("  Up: %0d", conn_up);
+        
+        // 以冒号分隔的格式显示MAC地址
+        $display("  Local MAC (formatted): %02x:%02x:%02x:%02x:%02x:%02x",
+                conn_my_mac[47:40],
+                conn_my_mac[39:32],
+                conn_my_mac[31:24],
+                conn_my_mac[23:16],
+                conn_my_mac[15:8],
+                conn_my_mac[7:0]);
+        $display("  Peer MAC (formatted): %02x:%02x:%02x:%02x:%02x:%02x",
+                conn_peer_mac[47:40],
+                conn_peer_mac[39:32],
+                conn_peer_mac[31:24],
+                conn_peer_mac[23:16],
+                conn_peer_mac[15:8],
+                conn_peer_mac[7:0]);
+    end
+    
+    #(CLK_PERIOD * 20);
+    
+    // 测试4: 测试连续读取所有连接
+    if (header_connections > 0) begin
+        $display("\nStep 4: Testing all connections...");
+        for (i = 0; i < header_connections; i = i + 1) begin
+            conn_index = i;
+            read_connection = 1'b1;
+            #(CLK_PERIOD * 2);
+            read_connection = 1'b0;
+            
+            wait(conn_valid === 1'b1);
+            #(CLK_PERIOD * 5);
+            
+            $display("Connection %0d: Switch=%d, LocalPort=%d, PeerPort=%d", 
+                    i, conn_switch_id, conn_my_port, conn_peer_port);
+        end
     end
     
     #(CLK_PERIOD * 50);
@@ -323,7 +358,7 @@ end
 // 超时保护
 //=============================================================================
 initial begin
-    #(CLK_PERIOD * 50000);  // 1000个时钟周期后超时
+    #(CLK_PERIOD * 50000);  // 5000个时钟周期后超时
     $display("TEST TIMEOUT!");
     $finish;
 end
