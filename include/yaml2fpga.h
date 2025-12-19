@@ -15,24 +15,15 @@
 #define MAX_IP_ADDR_LEN 16
 #define MAX_MAC_ADDR_LEN 18
 
-// Connection status
-typedef enum {
-    CONN_DOWN = 0,
-    CONN_UP = 1
-} connection_status_t;
 
 // Network connection configuration
 typedef struct {
-    connection_status_t up;
-    uint32_t host_id;
     char my_ip[MAX_IP_ADDR_LEN];
     char my_mac[MAX_MAC_ADDR_LEN];
     uint16_t my_port;
-    uint16_t my_qp;
     char peer_ip[MAX_IP_ADDR_LEN];
     char peer_mac[MAX_MAC_ADDR_LEN];
     uint16_t peer_port;
-    uint16_t peer_qp;
 } network_connection_t;
 
 // Switch configuration
@@ -61,17 +52,12 @@ typedef struct {
 // Individual connection entry for FPGA
 typedef struct {
     uint32_t switch_id;
-    uint32_t host_id;
     uint32_t local_ip;
     uint32_t peer_ip;
     uint16_t local_port;
     uint16_t peer_port;
-    uint16_t local_qp;
-    uint16_t peer_qp;
     uint8_t local_mac[6];
     uint8_t peer_mac[6];
-    uint8_t up;
-    uint8_t reserved[7];
 } __attribute__((packed)) fpga_connection_entry_t;
 
 // Error codes
