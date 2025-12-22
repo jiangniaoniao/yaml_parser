@@ -1,9 +1,24 @@
 `timescale 1ns / 1ps
 //////////////////////////////////////////////////////////////////////////////////
+// Company: 
+// Engineer: 
+// 
+// Create Date: 2025/12/20 12:43:50
+// Design Name: 
 // Module Name: routing_table_reader
-// Description: 读取两级路由表二进制文件 (fpga_config_routing.bin)
-//              包含服务器接入表和交换机路径表
+// Project Name: 
+// Target Devices: 
+// Tool Versions: 
+// Description: 
+// 
+// Dependencies: 
+// 
+// Revision:
+// Revision 0.01 - File Created
+// Additional Comments:
+// 
 //////////////////////////////////////////////////////////////////////////////////
+
 
 module routing_table_reader #(
     parameter MAX_HOSTS = 64,
@@ -397,7 +412,7 @@ always @(posedge clk or negedge rst_n) begin
             STATE_PARSE_HOST_ENTRY: begin
                 busy <= 1'b0;
 
-                // 解析Host Entry (所有字段都是主机字节序)
+                // 解析Host Entry
                 host_ip <= host_entry_buffer[0];
                 host_switch_id <= host_entry_buffer[1];
                 host_switch_ip <= host_entry_buffer[2];
@@ -431,7 +446,7 @@ always @(posedge clk or negedge rst_n) begin
             STATE_PARSE_PATH_ENTRY: begin
                 busy <= 1'b0;
 
-                // 解析Path Entry (所有字段都是主机字节序)
+                // 解析Path Entry
                 // Word 0: valid(byte0) | next_hop_switch(byte1) | out_port(bytes2-3)
                 // Word 1: out_qp(bytes0-1) | distance(bytes2-3)
                 // Word 2: next_hop_ip
