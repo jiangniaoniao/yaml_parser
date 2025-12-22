@@ -50,23 +50,27 @@ module fpga_config_reader #(
     
     // 连接寄存器输出
     output reg [31:0]              conn_switch_id,
+    output reg [31:0]              conn_host_id,
     output reg [31:0]              conn_my_ip,
     output reg [31:0]              conn_peer_ip,
     output reg [15:0]              conn_my_port,
     output reg [15:0]              conn_peer_port,
+    output reg [15:0]              conn_my_qp,
+    output reg [15:0]              conn_peer_qp,
     output reg [47:0]              conn_my_mac,
     output reg [47:0]              conn_peer_mac,
+    output reg                     conn_up,
     output reg                     conn_valid
 );
 
 // 状态机定义
-localparam STATE_IDLE          = 3'd0;
-localparam STATE_READ_HEADER   = 3'd1;
-localparam STATE_PARSE_HEADER  = 3'd2;
-localparam STATE_READY         = 3'd3;
-localparam STATE_READ_CONN     = 3'd4;
-localparam STATE_PARSE_CONN    = 3'd5;
-localparam STATE_ERROR         = 3'd6;
+parameter STATE_IDLE          = 3'd0;
+parameter STATE_READ_HEADER   = 3'd1;
+parameter STATE_PARSE_HEADER  = 3'd2;
+parameter STATE_READY         = 3'd3;
+parameter STATE_READ_CONN     = 3'd4;
+parameter STATE_PARSE_CONN    = 3'd5;
+parameter STATE_ERROR         = 3'd6;
 
 reg [2:0]                       state, next_state;
 
@@ -74,18 +78,15 @@ reg [2:0]                       state, next_state;
 reg [31:0]                      header_buffer [0:3];
 reg [2:0]                       header_read_cnt;
 reg [5:0]                       target_conn_index;
-reg [2:0]                       conn_read_cnt;  // 连接读取计数（0-7）
-reg [31:0]                      conn_buffer [0:6];
+reg [3:0]                       conn_read_cnt;  // 连接读取计数（0-10）
+reg [31:0]                      conn_buffer [0:10];
 reg                             read_connection_reg;  // 寄存器存储read_connection
 
 // 常数定义
 localparam HEADER_SIZE_BYTES = 16;     // 头部16字节
 localparam HEADER_SIZE_WORDS = 4;      // 头部4个字
-localparam CONN_SIZE_BYTES = 28;       // 每个连接28字节
-localparam WORDS_PER_CONN = 7;         // 每个连接7个字
-
-integer i;
-integer j;
+localparam CONN_SIZE_BYTES = 44;       // 每个连接44字节
+localparam WORDS_PER_CONN = 11;        // 每个连接11个字
 
 //=============================================================================
 // 状态机 - 组合逻辑
@@ -142,7 +143,7 @@ always @(posedge clk or negedge rst_n) begin
         state <= STATE_IDLE;
         mem_addr <= 32'h0;
         header_read_cnt <= 3'b0;
-        conn_read_cnt <= 3'b0;
+        conn_read_cnt <= 4'h0;
         target_conn_index <= 6'h0;
     end else begin
         state <= next_state;
@@ -151,7 +152,7 @@ always @(posedge clk or negedge rst_n) begin
             STATE_IDLE: begin
                 mem_addr <= 32'h0;
                 header_read_cnt <= 3'b0;
-                conn_read_cnt <= 3'b0;
+                conn_read_cnt <= 4'h0;
                 target_conn_index <= 6'h0;
             end
             
@@ -170,7 +171,7 @@ always @(posedge clk or negedge rst_n) begin
             
             STATE_READY: begin
                 mem_addr <= 32'h0;
-                conn_read_cnt <= 3'b0;
+                conn_read_cnt <= 4'h0;
                 
                 // 在READY状态捕获conn_index
                 if (read_connection && conn_index < header_connections) begin
@@ -184,7 +185,7 @@ always @(posedge clk or negedge rst_n) begin
                 if (conn_read_cnt < WORDS_PER_CONN) begin
                     // 计算字节地址
                     // 头部: 0-15字节
-                    // 连接n起始地址: 16 + n * 28
+                    // 连接n起始地址: 16 + n * 44
                     // 每个字偏移: conn_read_cnt * 4
                     mem_addr <= HEADER_SIZE_BYTES + 
                                (target_conn_index * CONN_SIZE_BYTES) + 
@@ -224,19 +225,23 @@ always @(posedge clk or negedge rst_n) begin
         header_timestamp <= 32'h0;
         
         conn_switch_id <= 32'h0;
+        conn_host_id <= 32'h0;
         conn_my_ip <= 32'h0;
         conn_peer_ip <= 32'h0;
         conn_my_port <= 16'h0;
         conn_peer_port <= 16'h0;
+        conn_my_qp <= 16'h0;
+        conn_peer_qp <= 16'h0;
         conn_my_mac <= 48'h0;
         conn_peer_mac <= 48'h0;
+        conn_up <= 1'b0;
         conn_valid <= 1'b0;
         
         // 初始化缓冲区
-        for (i = 0; i < HEADER_SIZE_WORDS; i = i + 1) begin
+        for (integer i = 0; i < HEADER_SIZE_WORDS; i = i + 1) begin
             header_buffer[i] <= 32'h0;
         end
-        for (j = 0; j < WORDS_PER_CONN; j = j + 1) begin
+        for (integer j = 0; j < WORDS_PER_CONN; j = j + 1) begin
             conn_buffer[j] <= 32'h0;
         end
     end else begin
@@ -302,48 +307,45 @@ always @(posedge clk or negedge rst_n) begin
             STATE_PARSE_CONN: begin
                 busy <= 1'b0;
                 
-                // 解析连接数据（新结构）
-                // 字0: switch_id
-                // 字1: local_ip
-                // 字2: peer_ip
-                // 字3: [15:0] local_port, [31:16] peer_port
-                // 字4: local_mac[0:3]（4字节）
-                // 字5: local_mac[4:5] + peer_mac[0:1]（2+2字节）
-                // 字6: peer_mac[2:5]（4字节）
-                
+                // 解析连接数据
                 conn_switch_id <= conn_buffer[0];
-                conn_my_ip <= conn_buffer[1];
-                conn_peer_ip <= conn_buffer[2];
+                conn_host_id <= conn_buffer[1];
+                conn_my_ip <= conn_buffer[2];
+                conn_peer_ip <= conn_buffer[3];
                 
-                // 端口（小端序）
-                conn_my_port <= conn_buffer[3][15:0];
-                conn_peer_port <= conn_buffer[3][31:16];
+                // 端口和QP号（小端序）
+                conn_my_port <= conn_buffer[4][15:0];
+                conn_peer_port <= conn_buffer[4][31:16];
+                conn_my_qp <= conn_buffer[5][15:0];
+                conn_peer_qp <= conn_buffer[5][31:16];
                 
                 // MAC地址
-                // local_mac: conn_buffer[4] + conn_buffer[5]的低16位
+                // my_mac: conn_buffer[6]的低32位 + conn_buffer[7]的低16位
                 conn_my_mac <= {
-                    conn_buffer[4][7:0],    // byte0
-                    conn_buffer[4][15:8],   // byte1
-                    conn_buffer[4][23:16],  // byte2
-                    conn_buffer[4][31:24],  // byte3
-                    conn_buffer[5][7:0],    // byte4
-                    conn_buffer[5][15:8]    // byte5
+                    conn_buffer[6][7:0],    // byte0
+                    conn_buffer[6][15:8],   // byte1
+                    conn_buffer[6][23:16],  // byte2
+                    conn_buffer[6][31:24],  // byte3
+                    conn_buffer[7][7:0],    // byte4
+                    conn_buffer[7][15:8]    // byte5
                 };
                 
-                // peer_mac: conn_buffer[5]的高16位 + conn_buffer[6]的32位
+                // peer_mac: conn_buffer[7]的高16位 + conn_buffer[8]的32位
                 conn_peer_mac <= {
-                    conn_buffer[5][23:16],  // byte0
-                    conn_buffer[5][31:24],  // byte1
-                    conn_buffer[6][7:0],    // byte2
-                    conn_buffer[6][15:8],   // byte3
-                    conn_buffer[6][23:16],  // byte4
-                    conn_buffer[6][31:24]   // byte5
+                    conn_buffer[7][23:16],  // byte6
+                    conn_buffer[7][31:24],  // byte7
+                    conn_buffer[8][7:0],    // byte8
+                    conn_buffer[8][15:8],   // byte9
+                    conn_buffer[8][23:16],  // byte10
+                    conn_buffer[8][31:24]   // byte11
                 };
                 
+                // up字段
+                conn_up <= conn_buffer[9][7:0] != 0;
                 conn_valid <= 1'b1;
                 
-                $display("[DUT] Connection %d parsed: switch_id=%d", 
-                        target_conn_index, conn_buffer[0]);
+                $display("[DUT] Connection %d parsed: switch_id=%d, host_id=%d", 
+                        target_conn_index, conn_buffer[0], conn_buffer[1]);
             end
             
             STATE_ERROR: begin

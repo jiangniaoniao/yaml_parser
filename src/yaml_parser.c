@@ -55,20 +55,29 @@ static int parse_connection(yaml_parser_t* parser, network_connection_t* conn) {
                 return ERR_YAML_PARSE;
             }
             
-
-            if (strcmp(key, "my_ip") == 0) {
+            if (strcmp(key, "up") == 0) {
+                bool temp_up = false;
+                parse_bool(&event, &temp_up);
+                conn->up = temp_up ? CONN_UP : CONN_DOWN;
+            } else if (strcmp(key, "host_id") == 0) {
+                parse_uint32(&event, &conn->host_id);
+            } else if (strcmp(key, "my_ip") == 0) {
                 parse_string(&event, conn->my_ip, MAX_IP_ADDR_LEN);
             } else if (strcmp(key, "my_mac") == 0) {
                 parse_string(&event, conn->my_mac, MAX_MAC_ADDR_LEN);
             } else if (strcmp(key, "my_port") == 0) {
                 parse_uint32(&event, (uint32_t*)&conn->my_port);
+            } else if (strcmp(key, "my_qp") == 0) {
+                parse_uint32(&event, (uint32_t*)&conn->my_qp);
             } else if (strcmp(key, "peer_ip") == 0) {
                 parse_string(&event, conn->peer_ip, MAX_IP_ADDR_LEN);
             } else if (strcmp(key, "peer_mac") == 0) {
                 parse_string(&event, conn->peer_mac, MAX_MAC_ADDR_LEN);
             } else if (strcmp(key, "peer_port") == 0) {
                 parse_uint32(&event, (uint32_t*)&conn->peer_port);
-            } 
+            } else if (strcmp(key, "peer_qp") == 0) {
+                parse_uint32(&event, (uint32_t*)&conn->peer_qp);
+            }
         }
         
         yaml_event_delete(&event);
