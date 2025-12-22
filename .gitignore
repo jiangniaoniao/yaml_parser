@@ -1,3 +1,7 @@
 obj/
 bin/
 fpga_config.bin
+fpga_config_routing.bin
+test*
+*.py
+C*
