@@ -8,7 +8,7 @@ OBJDIR = obj
 BINDIR = bin
 
 # Only include the core files we need
-CORE_SOURCES = src/main.c src/yaml_parser.c src/fpga_converter.c
+CORE_SOURCES = src/main.c src/yaml_parser.c src/fpga_converter.c src/flow_table.c
 CORE_OBJECTS = $(CORE_SOURCES:src/%.c=$(OBJDIR)/%.o)
 TARGET = $(BINDIR)/yaml2fpga
 

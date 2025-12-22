@@ -1,7 +1,6 @@
 #include "../include/yaml2fpga.h"
 #include <arpa/inet.h>
 
-// Helper function to parse boolean
 static int parse_bool(yaml_event_t* event, bool* value) {
     if (event->type == YAML_SCALAR_EVENT) {
         char* scalar = (char*)event->data.scalar.value;
@@ -11,7 +10,6 @@ static int parse_bool(yaml_event_t* event, bool* value) {
     return ERR_YAML_PARSE;
 }
 
-// Helper function to parse integer
 static int parse_uint32(yaml_event_t* event, uint32_t* value) {
     if (event->type == YAML_SCALAR_EVENT) {
         *value = (uint32_t)strtoul((char*)event->data.scalar.value, NULL, 10);
@@ -20,7 +18,6 @@ static int parse_uint32(yaml_event_t* event, uint32_t* value) {
     return ERR_YAML_PARSE;
 }
 
-// Helper function to parse string
 static int parse_string(yaml_event_t* event, char* dest, size_t max_len) {
     if (event->type == YAML_SCALAR_EVENT) {
         strncpy(dest, (char*)event->data.scalar.value, max_len - 1);
@@ -30,7 +27,6 @@ static int parse_string(yaml_event_t* event, char* dest, size_t max_len) {
     return ERR_YAML_PARSE;
 }
 
-// Parse network connection
 static int parse_connection(yaml_parser_t* parser, network_connection_t* conn) {
     yaml_event_t event;
     char key[64] = {0};
@@ -86,7 +82,6 @@ static int parse_connection(yaml_parser_t* parser, network_connection_t* conn) {
     return SUCCESS;
 }
 
-// Parse switch configuration
 static int parse_switch(yaml_parser_t* parser, switch_config_t* switch_cfg) {
     yaml_event_t event;
     char key[64] = {0};
@@ -152,7 +147,6 @@ static int parse_switch(yaml_parser_t* parser, switch_config_t* switch_cfg) {
     return SUCCESS;
 }
 
-// Main parsing function
 int parse_yaml_topology(const char* filename, topology_config_t* config) {
     FILE* file = fopen(filename, "r");
     if (!file) {

@@ -1,6 +1,23 @@
 #include "../include/yaml2fpga.h"
 #include <getopt.h>
 
+// 生成路由表文件名
+// 例如：fpga_config.bin -> fpga_routing.bin
+//      my_config.bin -> my_routing.bin
+static void generate_routing_filename(const char* config_filename, char* routing_filename, size_t size) {
+    const char* dot = strrchr(config_filename, '.');
+    const char* slash = strrchr(config_filename, '/');
+
+    if (dot && (!slash || dot > slash)) {
+        // 有扩展名
+        size_t prefix_len = dot - config_filename;
+        snprintf(routing_filename, size, "%.*s_routing%s", (int)prefix_len, config_filename, dot);
+    } else {
+        // 没有扩展名
+        snprintf(routing_filename, size, "%s_routing.bin", config_filename);
+    }
+}
+
 void print_usage(const char* program_name) {
     printf("Usage: %s [OPTIONS] YAML_FILE [OUTPUT_FILE]\n\n", program_name);
     printf("YAML to FPGA Configuration Converter\n\n");
@@ -82,11 +99,16 @@ int main(int argc, char* argv[]) {
     if (optind + 1 < argc) {
         output_file = argv[optind + 1];
     }
-    
+
+    // 生成路由表文件名
+    char routing_file[256];
+    generate_routing_filename(output_file, routing_file, sizeof(routing_file));
+
     printf("=== YAML to FPGA Configuration Converter ===\n");
     printf("Input: %s\n", yaml_file);
     if (!summary_only) {
-        printf("Output: %s\n", output_file);
+        printf("Output (Connections): %s\n", output_file);
+        printf("Output (Routing Table): %s\n", routing_file);
     }
     printf("\n");
     
@@ -131,23 +153,90 @@ int main(int argc, char* argv[]) {
     }
     
     printf("Conversion completed (%zu bytes)\n\n", fpga_size);
-    
-    // Step 5: Write to file
-    printf("Writing FPGA binary file...\n");
-    result = write_fpga_binary(output_file, fpga_data, fpga_size);
+
+    // Step 5: Build routing tables
+    printf("Building routing tables...\n");
+    fpga_host_entry_t* host_table = NULL;
+    fpga_switch_path_entry_t* switch_path_table = NULL;
+    uint32_t host_count = 0;
+    uint32_t switch_count = 0;
+    uint32_t max_switch_id = 0;
+
+    result = build_routing_tables(&config, &host_table, &host_count,
+                                   &switch_path_table, &switch_count, &max_switch_id);
     if (result != SUCCESS) {
-        fprintf(stderr, "Error: Failed to write output file (code: %d)\n", result);
+        fprintf(stderr, "Error: Failed to build routing tables (code: %d)\n", result);
         free(fpga_data);
         cleanup_topology(&config);
         return 1;
     }
-    
-    printf("FPGA configuration written to: %s\n", output_file);
-    
+
+    printf("Routing tables built successfully\n");
+    printf("  - Host entries: %u\n", host_count);
+    printf("  - Switch path table: %u × %u entries\n", max_switch_id + 1, max_switch_id + 1);
+
+    // Print routing tables
+    print_routing_tables(host_table, host_count, switch_path_table, switch_count, max_switch_id);
+
+    // Step 6: Generate routing table binary
+    printf("\nGenerating routing table binary...\n");
+    uint8_t* routing_data = NULL;
+    size_t routing_size = 0;
+
+    result = generate_routing_table_binary(&routing_data, &routing_size,
+                                           host_table, host_count,
+                                           switch_path_table, switch_count, max_switch_id);
+    if (result != SUCCESS) {
+        fprintf(stderr, "Error: Failed to generate routing table binary (code: %d)\n", result);
+        free(host_table);
+        free(switch_path_table);
+        free(fpga_data);
+        cleanup_topology(&config);
+        return 1;
+    }
+
+    printf("Routing table binary size: %zu bytes\n\n", routing_size);
+
+    // Step 7: Write connection config file
+    printf("Writing connection configuration file...\n");
+    result = write_fpga_binary(output_file, fpga_data, fpga_size);
+    if (result != SUCCESS) {
+        fprintf(stderr, "Error: Failed to write connection config file (code: %d)\n", result);
+        free(routing_data);
+        free(host_table);
+        free(switch_path_table);
+        free(fpga_data);
+        cleanup_topology(&config);
+        return 1;
+    }
+
+    printf("Connection configuration written to: %s\n", output_file);
+
+    // Step 8: Write routing table file
+    printf("Writing routing table file...\n");
+    result = write_routing_table_binary(routing_file, routing_data, routing_size);
+    if (result != SUCCESS) {
+        fprintf(stderr, "Error: Failed to write routing table file (code: %d)\n", result);
+        free(routing_data);
+        free(host_table);
+        free(switch_path_table);
+        free(fpga_data);
+        cleanup_topology(&config);
+        return 1;
+    }
+
+    printf("Routing table written to: %s\n", routing_file);
+
     // Cleanup
+    free(routing_data);
+    free(host_table);
+    free(switch_path_table);
     free(fpga_data);
     cleanup_topology(&config);
-    
+
     printf("\n=== Conversion Complete ===\n");
+    printf("Generated files:\n");
+    printf("  - %s (%zu bytes) - Connection configuration\n", output_file, fpga_size);
+    printf("  - %s (%zu bytes) - Routing table\n", routing_file, routing_size);
     return 0;
 }

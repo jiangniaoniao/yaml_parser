@@ -5,7 +5,7 @@
 // 
 // Create Date: 2025/12/15 20:28:45
 // Design Name: 
-// Module Name: fpga_config_reader
+// Module Name: config_reader
 // Project Name: 
 // Target Devices: 
 // Tool Versions: 
@@ -20,7 +20,7 @@
 //////////////////////////////////////////////////////////////////////////////////
 
 
-module fpga_config_reader #(
+module config_reader #(
     parameter MAX_CONNECTIONS = 64,
     parameter ADDR_WIDTH = 32,
     parameter DATA_WIDTH = 32
