@@ -5,3 +5,4 @@ fpga_config_routing.bin
 test*
 *.py
 C*
+*.txt
