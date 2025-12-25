@@ -74,7 +74,48 @@ typedef struct {
     uint8_t reserved[7];
 } __attribute__((packed)) fpga_connection_entry_t;
 
-// ============ 两级路由表结构 ============
+// ============ 统一目的地路由表结构 (方案3: 树形拓扑优化) ============
+
+// 目的地路由表头 (16字节)
+typedef struct {
+    uint32_t magic;              // 0x44455354 ("DEST")
+    uint32_t entry_count;        // 路由表条目数量
+    uint32_t switch_id;          // 本交换机ID
+    uint32_t reserved;
+} __attribute__((packed)) fpga_dest_table_header_t;
+
+// 目的地路由表条目 (32字节)
+// 每个Switch存储到所有目标（Host/Switch）的路由信息
+typedef struct {
+    // 匹配字段
+    uint32_t dst_ip;             // 目标IP地址（匹配键）
+    uint8_t  valid;              // 有效位
+
+    // 特殊标志
+    uint8_t  is_direct_host;     // 是否直连Host (1=直连, 0=需转发)
+    uint8_t  is_broadcast;       // AllReduce下行时是否广播
+    uint8_t  padding1;
+
+    // 转发动作
+    uint16_t out_port;           // 输出端口
+    uint16_t out_qp;             // 输出QP
+    uint32_t next_hop_ip;        // 下一跳IP地址
+    uint16_t next_hop_port;      // 下一跳端口
+    uint16_t next_hop_qp;        // 下一跳QP
+    uint8_t  next_hop_mac[6];    // 下一跳MAC地址
+
+    uint8_t  padding2[6];        // 对齐到32字节
+} __attribute__((packed)) fpga_dest_entry_t;
+
+// 广播配置表 (可选，用于AllReduce)
+typedef struct {
+    uint8_t  child_count;        // 子节点数量
+    uint8_t  padding[3];
+    uint16_t child_ports[4];     // 子节点端口号（最多4个）
+    uint16_t child_qps[4];       // 子节点QP号
+} __attribute__((packed)) fpga_broadcast_config_t;
+
+// ============ 兼容旧结构（保留用于对比测试）============
 
 // 服务器接入表头 (16字节)
 typedef struct {
@@ -102,8 +143,6 @@ typedef struct {
 } __attribute__((packed)) fpga_switch_path_header_t;
 
 // 交换机路径表条目 (24字节 - 增强版本)
-// 存储为二维数组扁平化: [src_sw0→dst_sw0][src_sw0→dst_sw1]...[src_swN→dst_swN]
-// 地址计算: base + (src_id * (max_id+1) + dst_id) * sizeof(entry)
 typedef struct {
     uint8_t valid;               // 是否有效 (1=有路径, 0=无路径或到自己)
     uint8_t padding[3];          // 对齐填充
@@ -129,7 +168,16 @@ int write_fpga_binary(const char* filename, const uint8_t* data, size_t size);
 void cleanup_topology(topology_config_t* config);
 void print_topology_summary(const topology_config_t* config);
 
-// 两级路由表函数声明
+// ============ 统一路由表函数声明（方案3）============
+int build_unified_routing_table(const topology_config_t* config,
+                                 uint32_t switch_id,
+                                 fpga_dest_entry_t** dest_table,
+                                 uint32_t* entry_count);
+int generate_unified_routing_binary(const topology_config_t* config,
+                                     const char* output_filename);
+void print_dest_table(const fpga_dest_entry_t* dest_table, uint32_t entry_count, uint32_t switch_id);
+
+// ============ 旧版两级路由表函数声明（兼容）============
 int build_routing_tables(const topology_config_t* config,
                          fpga_host_entry_t** host_table, uint32_t* host_count,
                          fpga_switch_path_entry_t** switch_path_table,

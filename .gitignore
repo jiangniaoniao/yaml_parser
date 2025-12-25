@@ -2,8 +2,8 @@ obj/
 bin/
 fpga_config.bin
 fpga_config_routing.bin
+fpga_config_routing.hex
 test*
-*.py
 C*
 *.txt
 container_inc-master/
