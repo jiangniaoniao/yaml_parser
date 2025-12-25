@@ -25,8 +25,8 @@ module routing_system_top #(
     parameter MAX_SWITCHES = 16,
     parameter ADDR_WIDTH = 32,
     parameter DATA_WIDTH = 32,
-    parameter HOST_ENTRY_WIDTH = 256,
-    parameter PATH_ENTRY_WIDTH = 128
+    parameter HOST_ENTRY_WIDTH = 192,    // 24 bytes = 192 bits
+    parameter PATH_ENTRY_WIDTH = 192     // 24 bytes = 192 bits
 ) (
     input  wire                         clk,
     input  wire                         rst_n,
@@ -40,31 +40,19 @@ module routing_system_top #(
     output wire                         init_busy,       // Initialization in progress
     output wire                         system_ready,    // System ready for lookup
 
-    // ========== Runtime Lookup Interface - Port A ==========
+    // ========== Runtime Lookup Interface - Port A (Auto Two-Level Lookup) ==========
     input  wire                         req_a_valid,
-    input  wire                         req_a_type,      // 0=host lookup, 1=path lookup
-    input  wire [5:0]                   req_a_host_idx,  // For host lookup
-    input  wire [3:0]                   req_a_src_sw,    // For path lookup
-    input  wire [3:0]                   req_a_dst_sw,    // For path lookup
+    input  wire [3:0]                   req_a_src_sw,    // Current switch ID
+    input  wire [5:0]                   req_a_dst_host,  // Destination host index
 
     output wire                         resp_a_valid,
-    output wire                         resp_a_type,
-    // Host lookup results
-    output wire [31:0]                  resp_a_host_ip,
-    output wire [31:0]                  resp_a_host_switch_id,
-    output wire [31:0]                  resp_a_host_switch_ip,
-    output wire [15:0]                  resp_a_host_port,
-    output wire [15:0]                  resp_a_host_qp,
-    output wire [47:0]                  resp_a_host_mac,
-    // Path lookup results
     output wire                         resp_a_path_valid,
-    output wire [7:0]                   resp_a_path_next_hop,
     output wire [15:0]                  resp_a_path_out_port,
     output wire [15:0]                  resp_a_path_out_qp,
-    output wire [15:0]                  resp_a_path_distance,
     output wire [31:0]                  resp_a_path_next_hop_ip,
     output wire [15:0]                  resp_a_path_next_hop_port,
     output wire [15:0]                  resp_a_path_next_hop_qp,
+    output wire [47:0]                  resp_a_path_next_hop_mac,
 
     // ========== Runtime Lookup Interface - Port B ==========
     input  wire                         req_b_valid,
@@ -77,18 +65,16 @@ module routing_system_top #(
     output wire                         resp_b_type,
     output wire [31:0]                  resp_b_host_ip,
     output wire [31:0]                  resp_b_host_switch_id,
-    output wire [31:0]                  resp_b_host_switch_ip,
     output wire [15:0]                  resp_b_host_port,
     output wire [15:0]                  resp_b_host_qp,
     output wire [47:0]                  resp_b_host_mac,
     output wire                         resp_b_path_valid,
-    output wire [7:0]                   resp_b_path_next_hop,
     output wire [15:0]                  resp_b_path_out_port,
     output wire [15:0]                  resp_b_path_out_qp,
-    output wire [15:0]                  resp_b_path_distance,
     output wire [31:0]                  resp_b_path_next_hop_ip,
     output wire [15:0]                  resp_b_path_next_hop_port,
-    output wire [15:0]                  resp_b_path_next_hop_qp
+    output wire [15:0]                  resp_b_path_next_hop_qp,
+    output wire [47:0]                  resp_b_path_next_hop_mac
 );
 
 //=============================================================================
@@ -129,20 +115,18 @@ reg  [3:0]  reader_dst_sw;
 
 wire [31:0] reader_host_ip;
 wire [31:0] reader_host_switch_id;
-wire [31:0] reader_host_switch_ip;
 wire [15:0] reader_host_port;
 wire [15:0] reader_host_qp;
 wire [47:0] reader_host_mac;
 wire        reader_host_valid;
 
 wire        reader_path_valid_flag;
-wire [7:0]  reader_path_next_hop;
 wire [15:0] reader_path_out_port;
 wire [15:0] reader_path_out_qp;
-wire [15:0] reader_path_distance;
 wire [31:0] reader_path_next_hop_ip;
 wire [15:0] reader_path_next_hop_port;
 wire [15:0] reader_path_next_hop_qp;
+wire [47:0] reader_path_next_hop_mac;
 wire        reader_path_data_valid;
 
 // Lookup engine interface
@@ -180,7 +164,6 @@ routing_table_reader #(
     .read_host              (reader_read_host),
     .host_ip                (reader_host_ip),
     .host_switch_id         (reader_host_switch_id),
-    .host_switch_ip         (reader_host_switch_ip),
     .host_port              (reader_host_port),
     .host_qp                (reader_host_qp),
     .host_mac               (reader_host_mac),
@@ -194,13 +177,12 @@ routing_table_reader #(
     .dst_switch_id          (reader_dst_sw),
     .read_path              (reader_read_path),
     .path_valid_flag        (reader_path_valid_flag),
-    .path_next_hop_switch   (reader_path_next_hop),
     .path_out_port          (reader_path_out_port),
     .path_out_qp            (reader_path_out_qp),
-    .path_distance          (reader_path_distance),
     .path_next_hop_ip       (reader_path_next_hop_ip),
     .path_next_hop_port     (reader_path_next_hop_port),
     .path_next_hop_qp       (reader_path_next_hop_qp),
+    .path_next_hop_mac      (reader_path_next_hop_mac),
     .path_data_valid        (reader_path_data_valid)
 );
 
@@ -229,28 +211,18 @@ routing_lookup_engine #(
     .switch_count_cfg           ({24'h0, total_switches}),
     .max_switch_id_cfg          ({24'h0, max_sw_id}),
 
-    // Port A lookup interface
+    // Port A lookup interface (Auto two-level)
     .req_a_valid                (req_a_valid),
-    .req_a_type                 (req_a_type),
-    .req_a_host_idx             (req_a_host_idx),
     .req_a_src_sw               (req_a_src_sw),
-    .req_a_dst_sw               (req_a_dst_sw),
+    .req_a_dst_host             (req_a_dst_host),
     .resp_a_valid               (resp_a_valid),
-    .resp_a_type                (resp_a_type),
-    .resp_a_host_ip             (resp_a_host_ip),
-    .resp_a_host_switch_id      (resp_a_host_switch_id),
-    .resp_a_host_switch_ip      (resp_a_host_switch_ip),
-    .resp_a_host_port           (resp_a_host_port),
-    .resp_a_host_qp             (resp_a_host_qp),
-    .resp_a_host_mac            (resp_a_host_mac),
     .resp_a_path_valid          (resp_a_path_valid),
-    .resp_a_path_next_hop       (resp_a_path_next_hop),
     .resp_a_path_out_port       (resp_a_path_out_port),
     .resp_a_path_out_qp         (resp_a_path_out_qp),
-    .resp_a_path_distance       (resp_a_path_distance),
     .resp_a_path_next_hop_ip    (resp_a_path_next_hop_ip),
     .resp_a_path_next_hop_port  (resp_a_path_next_hop_port),
     .resp_a_path_next_hop_qp    (resp_a_path_next_hop_qp),
+    .resp_a_path_next_hop_mac   (resp_a_path_next_hop_mac),
 
     // Port B lookup interface
     .req_b_valid                (req_b_valid),
@@ -262,18 +234,16 @@ routing_lookup_engine #(
     .resp_b_type                (resp_b_type),
     .resp_b_host_ip             (resp_b_host_ip),
     .resp_b_host_switch_id      (resp_b_host_switch_id),
-    .resp_b_host_switch_ip      (resp_b_host_switch_ip),
     .resp_b_host_port           (resp_b_host_port),
     .resp_b_host_qp             (resp_b_host_qp),
     .resp_b_host_mac            (resp_b_host_mac),
     .resp_b_path_valid          (resp_b_path_valid),
-    .resp_b_path_next_hop       (resp_b_path_next_hop),
     .resp_b_path_out_port       (resp_b_path_out_port),
     .resp_b_path_out_qp         (resp_b_path_out_qp),
-    .resp_b_path_distance       (resp_b_path_distance),
     .resp_b_path_next_hop_ip    (resp_b_path_next_hop_ip),
     .resp_b_path_next_hop_port  (resp_b_path_next_hop_port),
-    .resp_b_path_next_hop_qp    (resp_b_path_next_hop_qp)
+    .resp_b_path_next_hop_qp    (resp_b_path_next_hop_qp),
+    .resp_b_path_next_hop_mac   (resp_b_path_next_hop_mac)
 );
 
 //=============================================================================
@@ -357,13 +327,18 @@ always @(posedge clk or negedge rst_n) begin
                         engine_init_addr <= init_entry_cnt;
                         engine_init_wr_en <= 1'b1;
 
-                        // Pack host entry data (256 bits)
+                        // Pack host entry data (192 bits)
+                        // [31:0]: host_ip
+                        // [63:32]: switch_id
+                        // [79:64]: port
+                        // [95:80]: qp
+                        // [143:96]: host_mac (48 bits)
+                        // [191:144]: padding (48 bits)
                         engine_init_data <= {
-                            80'h0,                      // [255:176] padding
-                            reader_host_mac,            // [175:128] MAC (48 bits)
-                            reader_host_qp,             // [127:112] QP (16 bits)
-                            reader_host_port,           // [111:96]  Port (16 bits)
-                            reader_host_switch_ip,      // [95:64]   Switch IP (32 bits)
+                            48'h0,                      // [191:144] padding
+                            reader_host_mac,            // [143:96]  MAC (48 bits)
+                            reader_host_qp,             // [95:80]   QP (16 bits)
+                            reader_host_port,           // [79:64]   Port (16 bits)
                             reader_host_switch_id,      // [63:32]   Switch ID (32 bits)
                             reader_host_ip              // [31:0]    Host IP (32 bits)
                         };
@@ -401,22 +376,31 @@ always @(posedge clk or negedge rst_n) begin
                         engine_init_addr <= reader_src_sw * (max_sw_id + 1) + reader_dst_sw;
                         engine_init_wr_en <= 1'b1;
 
-                        // Pack path entry data (128 bits, padded to 256)
+                        // Pack path entry data (192 bits)
+                        // [7:0]: valid
+                        // [31:8]: padding
+                        // [47:32]: out_port
+                        // [63:48]: out_qp
+                        // [95:64]: next_hop_ip
+                        // [111:96]: next_hop_port
+                        // [127:112]: next_hop_qp
+                        // [175:128]: next_hop_mac (48 bits)
+                        // [191:176]: padding2 (16 bits)
                         engine_init_data <= {
-                            128'h0,                          // [255:128] padding
-                            reader_path_next_hop_qp,         // [127:112]
-                            reader_path_next_hop_port,       // [111:96]
-                            reader_path_next_hop_ip,         // [95:64]
-                            reader_path_distance,            // [63:48]
-                            reader_path_out_qp,              // [47:32]
-                            reader_path_out_port,            // [31:16]
-                            reader_path_next_hop,            // [15:8]
-                            (reader_path_valid_flag ? 8'h01 : 8'h00)  // [7:0]
+                            16'h0,                               // [191:176] padding2
+                            reader_path_next_hop_mac,            // [175:128] next_hop_mac (48 bits)
+                            reader_path_next_hop_qp,             // [127:112] next_hop_qp
+                            reader_path_next_hop_port,           // [111:96]  next_hop_port
+                            reader_path_next_hop_ip,             // [95:64]   next_hop_ip
+                            reader_path_out_qp,                  // [63:48]   out_qp
+                            reader_path_out_port,                // [47:32]   out_port
+                            24'h0,                               // [31:8]    padding
+                            (reader_path_valid_flag ? 8'h01 : 8'h00)  // [7:0] valid
                         };
 
                         path_req_sent <= 1'b0;  // Clear flag for next entry
-                        $display("[Init] Loaded Path[%d→%d]: next_hop=%d, valid=%d, BRAM_addr=%d",
-                                 reader_src_sw, reader_dst_sw, reader_path_next_hop, reader_path_valid_flag,
+                        $display("[Init] Loaded Path[%d→%d]: valid=%d, BRAM_addr=%d",
+                                 reader_src_sw, reader_dst_sw, reader_path_valid_flag,
                                  reader_src_sw * (max_sw_id + 1) + reader_dst_sw);
 
                         // Move to next entry (only iterate through valid switch IDs: 1 to max_sw_id)

@@ -50,7 +50,6 @@ module routing_table_reader #(
     // 主机条目输出
     output reg [31:0]              host_ip,
     output reg [31:0]              host_switch_id,
-    output reg [31:0]              host_switch_ip,
     output reg [15:0]              host_port,
     output reg [15:0]              host_qp,
     output reg [47:0]              host_mac,
@@ -68,13 +67,12 @@ module routing_table_reader #(
 
     // 交换机路径输出
     output reg                     path_valid_flag,
-    output reg [7:0]               path_next_hop_switch,
     output reg [15:0]              path_out_port,
     output reg [15:0]              path_out_qp,
-    output reg [15:0]              path_distance,
     output reg [31:0]              path_next_hop_ip,
     output reg [15:0]              path_next_hop_port,
     output reg [15:0]              path_next_hop_qp,
+    output reg [47:0]              path_next_hop_mac,
     output reg                     path_data_valid
 );
 
@@ -93,11 +91,17 @@ localparam STATE_ERROR            = 4'd10;
 
 reg [3:0]                       state, next_state;
 
+// 条目大小常量（字节和字数）
+localparam HOST_ENTRY_SIZE = 24;          // Host条目24字节
+localparam SWITCH_ENTRY_SIZE = 24;        // Switch Path条目24字节
+localparam HOST_ENTRY_WORDS = 6;          // 24字节 = 6个32位字
+localparam SWITCH_ENTRY_WORDS = 6;        // 24字节 = 6个32位字
+
 // 内部寄存器
 reg [31:0]                      host_header_buffer [0:3];     // 16字节 = 4个word
 reg [31:0]                      switch_header_buffer [0:3];   // 16字节 = 4个word
-reg [31:0]                      host_entry_buffer [0:7];      // 32字节 = 8个word
-reg [31:0]                      path_entry_buffer [0:3];      // 16字节 = 4个word
+reg [31:0]                      host_entry_buffer [0:5];      // 24字节 = 6个word
+reg [31:0]                      path_entry_buffer [0:5];      // 24字节 = 6个word
 
 reg [2:0]                       header_read_cnt;
 reg [3:0]                       entry_read_cnt;
@@ -315,20 +319,18 @@ always @(posedge clk or negedge rst_n) begin
 
         host_ip <= 32'h0;
         host_switch_id <= 32'h0;
-        host_switch_ip <= 32'h0;
         host_port <= 16'h0;
         host_qp <= 16'h0;
         host_mac <= 48'h0;
         host_valid <= 1'b0;
 
         path_valid_flag <= 1'b0;
-        path_next_hop_switch <= 8'h0;
         path_out_port <= 16'h0;
         path_out_qp <= 16'h0;
-        path_distance <= 16'h0;
         path_next_hop_ip <= 32'h0;
         path_next_hop_port <= 16'h0;
         path_next_hop_qp <= 16'h0;
+        path_next_hop_mac <= 48'h0;
         path_data_valid <= 1'b0;
 
     end else begin
@@ -412,28 +414,32 @@ always @(posedge clk or negedge rst_n) begin
             STATE_PARSE_HOST_ENTRY: begin
                 busy <= 1'b0;
 
-                // 解析Host Entry
+                // 解析Host Entry (24字节)
+                // Word 0: host_ip
+                // Word 1: switch_id
+                // Word 2: port[15:0] | qp[15:0]
+                // Word 3-4: host_mac (48位)
+                // Word 5: padding
                 host_ip <= host_entry_buffer[0];
                 host_switch_id <= host_entry_buffer[1];
-                host_switch_ip <= host_entry_buffer[2];
-                host_port <= host_entry_buffer[3][15:0];   // 低16位是port
-                host_qp <= host_entry_buffer[3][31:16];    // 高16位是qp
+                host_port <= host_entry_buffer[2][15:0];   // 低16位是port
+                host_qp <= host_entry_buffer[2][31:16];    // 高16位是qp
 
-                // MAC地址: 6字节在buffer[4]的低32位和buffer[5]的低16位
+                // MAC地址: 6字节，位于Word 3-4
                 host_mac <= {
+                    host_entry_buffer[3][7:0],
+                    host_entry_buffer[3][15:8],
+                    host_entry_buffer[3][23:16],
+                    host_entry_buffer[3][31:24],
                     host_entry_buffer[4][7:0],
-                    host_entry_buffer[4][15:8],
-                    host_entry_buffer[4][23:16],
-                    host_entry_buffer[4][31:24],
-                    host_entry_buffer[5][7:0],
-                    host_entry_buffer[5][15:8]
+                    host_entry_buffer[4][15:8]
                 };
 
                 host_valid <= 1'b1;
 
                 $display("[Routing Reader] Host Entry %d: ip=0x%08x, switch_id=%d, port=%d, qp=%d",
                         target_host_index, host_entry_buffer[0], host_entry_buffer[1],
-                        host_entry_buffer[3][15:0], host_entry_buffer[3][31:16]);
+                        host_entry_buffer[2][15:0], host_entry_buffer[2][31:16]);
             end
 
             STATE_READ_PATH_ENTRY: begin
@@ -446,30 +452,38 @@ always @(posedge clk or negedge rst_n) begin
             STATE_PARSE_PATH_ENTRY: begin
                 busy <= 1'b0;
 
-                // 解析Path Entry
-                // Word 0: valid(byte0) | next_hop_switch(byte1) | out_port(bytes2-3)
-                // Word 1: out_qp(bytes0-1) | distance(bytes2-3)
-                // Word 2: next_hop_ip
-                // Word 3: next_hop_port(bytes0-1) | next_hop_qp(bytes2-3)
+                // 解析Path Entry (24字节)
+                // Word 0: valid[7:0] | padding[23:0]
+                // Word 1: out_port[15:0] | out_qp[15:0]
+                // Word 2: next_hop_ip[31:0]
+                // Word 3: next_hop_port[15:0] | next_hop_qp[15:0]
+                // Word 4-5: next_hop_mac[47:0] + padding2
 
-                path_valid_flag <= (path_entry_buffer[0][7:0] != 0);
-                path_next_hop_switch <= path_entry_buffer[0][15:8];
-                path_out_port <= path_entry_buffer[0][31:16];
-
-                path_out_qp <= path_entry_buffer[1][15:0];
-                path_distance <= path_entry_buffer[1][31:16];
+                path_valid_flag <= (path_entry_buffer[0][0] != 0);
+                path_out_port <= path_entry_buffer[1][15:0];
+                path_out_qp <= path_entry_buffer[1][31:16];
 
                 path_next_hop_ip <= path_entry_buffer[2];
 
                 path_next_hop_port <= path_entry_buffer[3][15:0];
                 path_next_hop_qp <= path_entry_buffer[3][31:16];
 
+                // MAC地址: 6字节，位于Word 4-5
+                path_next_hop_mac <= {
+                    path_entry_buffer[4][7:0],
+                    path_entry_buffer[4][15:8],
+                    path_entry_buffer[4][23:16],
+                    path_entry_buffer[4][31:24],
+                    path_entry_buffer[5][7:0],
+                    path_entry_buffer[5][15:8]
+                };
+
                 path_data_valid <= 1'b1;
 
-                $display("[Routing Reader] Path Entry [%d→%d]: valid=%d, next_hop=%d, out_port=%d, distance=%d",
+                $display("[Routing Reader] Path Entry [%d→%d]: valid=%d, out_port=%d, out_qp=%d",
                         target_src_switch, target_dst_switch,
-                        (path_entry_buffer[0][7:0] != 0), path_entry_buffer[0][15:8],
-                        path_entry_buffer[0][31:16],
+                        (path_entry_buffer[0][0] != 0),
+                        path_entry_buffer[1][15:0],
                         path_entry_buffer[1][31:16]);
             end
 

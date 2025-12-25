@@ -32,6 +32,8 @@ parameter ADDR_WIDTH = 32;
 parameter DATA_WIDTH = 32;
 parameter BIN_FILE = "fpga_config_routing.bin";
 parameter ROM_DEPTH = 4096;  // 16KB
+parameter HOST_ENTRY_WIDTH = 192;    // 24 bytes = 192 bits
+parameter PATH_ENTRY_WIDTH = 192;    // 24 bytes = 192 bits
 
 //=============================================================================
 // Signals
@@ -46,29 +48,19 @@ reg                         start_init;
 wire                        init_busy;
 wire                        system_ready;
 
-// Port A signals
+// Port A signals (Auto two-level lookup)
 reg                         req_a_valid;
-reg                         req_a_type;
-reg  [5:0]                  req_a_host_idx;
 reg  [3:0]                  req_a_src_sw;
-reg  [3:0]                  req_a_dst_sw;
+reg  [5:0]                  req_a_dst_host;
 
 wire                        resp_a_valid;
-wire                        resp_a_type;
-wire [31:0]                 resp_a_host_ip;
-wire [31:0]                 resp_a_host_switch_id;
-wire [31:0]                 resp_a_host_switch_ip;
-wire [15:0]                 resp_a_host_port;
-wire [15:0]                 resp_a_host_qp;
-wire [47:0]                 resp_a_host_mac;
 wire                        resp_a_path_valid;
-wire [7:0]                  resp_a_path_next_hop;
 wire [15:0]                 resp_a_path_out_port;
 wire [15:0]                 resp_a_path_out_qp;
-wire [15:0]                 resp_a_path_distance;
 wire [31:0]                 resp_a_path_next_hop_ip;
 wire [15:0]                 resp_a_path_next_hop_port;
 wire [15:0]                 resp_a_path_next_hop_qp;
+wire [47:0]                 resp_a_path_next_hop_mac;
 
 // Port B signals
 reg                         req_b_valid;
@@ -81,18 +73,16 @@ wire                        resp_b_valid;
 wire                        resp_b_type;
 wire [31:0]                 resp_b_host_ip;
 wire [31:0]                 resp_b_host_switch_id;
-wire [31:0]                 resp_b_host_switch_ip;
 wire [15:0]                 resp_b_host_port;
 wire [15:0]                 resp_b_host_qp;
 wire [47:0]                 resp_b_host_mac;
 wire                        resp_b_path_valid;
-wire [7:0]                  resp_b_path_next_hop;
 wire [15:0]                 resp_b_path_out_port;
 wire [15:0]                 resp_b_path_out_qp;
-wire [15:0]                 resp_b_path_distance;
 wire [31:0]                 resp_b_path_next_hop_ip;
 wire [15:0]                 resp_b_path_next_hop_port;
 wire [15:0]                 resp_b_path_next_hop_qp;
+wire [47:0]                 resp_b_path_next_hop_mac;
 
 //=============================================================================
 // Simulated ROM containing routing table binary data
@@ -182,8 +172,8 @@ routing_system_top #(
     .MAX_SWITCHES       (MAX_SWITCHES),
     .ADDR_WIDTH         (ADDR_WIDTH),
     .DATA_WIDTH         (DATA_WIDTH),
-    .HOST_ENTRY_WIDTH   (256),
-    .PATH_ENTRY_WIDTH   (128)
+    .HOST_ENTRY_WIDTH   (HOST_ENTRY_WIDTH),
+    .PATH_ENTRY_WIDTH   (PATH_ENTRY_WIDTH)
 ) dut (
     .clk                        (clk),
     .rst_n                      (rst_n),
@@ -196,26 +186,16 @@ routing_system_top #(
     .system_ready               (system_ready),
 
     .req_a_valid                (req_a_valid),
-    .req_a_type                 (req_a_type),
-    .req_a_host_idx             (req_a_host_idx),
     .req_a_src_sw               (req_a_src_sw),
-    .req_a_dst_sw               (req_a_dst_sw),
+    .req_a_dst_host             (req_a_dst_host),
     .resp_a_valid               (resp_a_valid),
-    .resp_a_type                (resp_a_type),
-    .resp_a_host_ip             (resp_a_host_ip),
-    .resp_a_host_switch_id      (resp_a_host_switch_id),
-    .resp_a_host_switch_ip      (resp_a_host_switch_ip),
-    .resp_a_host_port           (resp_a_host_port),
-    .resp_a_host_qp             (resp_a_host_qp),
-    .resp_a_host_mac            (resp_a_host_mac),
     .resp_a_path_valid          (resp_a_path_valid),
-    .resp_a_path_next_hop       (resp_a_path_next_hop),
     .resp_a_path_out_port       (resp_a_path_out_port),
     .resp_a_path_out_qp         (resp_a_path_out_qp),
-    .resp_a_path_distance       (resp_a_path_distance),
     .resp_a_path_next_hop_ip    (resp_a_path_next_hop_ip),
     .resp_a_path_next_hop_port  (resp_a_path_next_hop_port),
     .resp_a_path_next_hop_qp    (resp_a_path_next_hop_qp),
+    .resp_a_path_next_hop_mac   (resp_a_path_next_hop_mac),
 
     .req_b_valid                (req_b_valid),
     .req_b_type                 (req_b_type),
@@ -226,18 +206,16 @@ routing_system_top #(
     .resp_b_type                (resp_b_type),
     .resp_b_host_ip             (resp_b_host_ip),
     .resp_b_host_switch_id      (resp_b_host_switch_id),
-    .resp_b_host_switch_ip      (resp_b_host_switch_ip),
     .resp_b_host_port           (resp_b_host_port),
     .resp_b_host_qp             (resp_b_host_qp),
     .resp_b_host_mac            (resp_b_host_mac),
     .resp_b_path_valid          (resp_b_path_valid),
-    .resp_b_path_next_hop       (resp_b_path_next_hop),
     .resp_b_path_out_port       (resp_b_path_out_port),
     .resp_b_path_out_qp         (resp_b_path_out_qp),
-    .resp_b_path_distance       (resp_b_path_distance),
     .resp_b_path_next_hop_ip    (resp_b_path_next_hop_ip),
     .resp_b_path_next_hop_port  (resp_b_path_next_hop_port),
-    .resp_b_path_next_hop_qp    (resp_b_path_next_hop_qp)
+    .resp_b_path_next_hop_qp    (resp_b_path_next_hop_qp),
+    .resp_b_path_next_hop_mac   (resp_b_path_next_hop_mac)
 );
 
 //=============================================================================
@@ -344,10 +322,13 @@ initial begin
     #(CLK_PERIOD * 4);
     $display("[TB] Path [1→2] Lookup Result:");
     $display("     Valid: %d", resp_a_path_valid);
-    $display("     Next Hop: %d", resp_a_path_next_hop);
     $display("     Out Port: %d, Out QP: %d", resp_a_path_out_port, resp_a_path_out_qp);
-    $display("     Distance: %d", resp_a_path_distance);
-    $display("     Next Hop IP: 0x%08x", resp_a_path_next_hop_ip);
+    $display("     Next Hop IP: 0x%08x, Port: %d, QP: %d",
+             resp_a_path_next_hop_ip, resp_a_path_next_hop_port, resp_a_path_next_hop_qp);
+    $display("     Next Hop MAC: %02x:%02x:%02x:%02x:%02x:%02x",
+             resp_a_path_next_hop_mac[47:40], resp_a_path_next_hop_mac[39:32],
+             resp_a_path_next_hop_mac[31:24], resp_a_path_next_hop_mac[23:16],
+             resp_a_path_next_hop_mac[15:8], resp_a_path_next_hop_mac[7:0]);
 
     // Lookup Path 2→3
     #(CLK_PERIOD * 5);
@@ -361,8 +342,8 @@ initial begin
 
     #(CLK_PERIOD * 4);
     $display("[TB] Path [2→3] Lookup Result:");
-    $display("     Valid: %d, Next Hop: %d", resp_a_path_valid, resp_a_path_next_hop);
-    $display("     Distance: %d", resp_a_path_distance);
+    $display("     Valid: %d", resp_a_path_valid);
+    $display("     Out Port: %d, Out QP: %d", resp_a_path_out_port, resp_a_path_out_qp);
 
     // ========== Test Dual-Port Concurrent Lookups ==========
     $display("\n[TB] ========== Testing Dual-Port Concurrent Lookups ==========");
@@ -389,8 +370,8 @@ initial begin
     $display("[TB] Concurrent Lookup Results:");
     $display("     Port A (Host 1): IP=0x%08x, Switch=%d",
              resp_a_host_ip, resp_a_host_switch_id);
-    $display("     Port B (Path 3→1): Next Hop=%d, Distance=%d",
-             resp_b_path_next_hop, resp_b_path_distance);
+    $display("     Port B (Path 3→1): Valid=%d, Out Port=%d, Out QP=%d",
+             resp_b_path_valid, resp_b_path_out_port, resp_b_path_out_qp);
 
     // ========== Test Complete ==========
     #(CLK_PERIOD * 10);

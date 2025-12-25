@@ -191,10 +191,10 @@ static int build_host_table(const topology_config_t* config,
                 // 直接存储为主机字节序，便于Verilog硬件直接读取
                 entry->host_ip = ip_str_to_uint32(conn->peer_ip);
                 entry->switch_id = sw->id;
-                entry->switch_ip = ip_str_to_uint32(conn->my_ip);
                 entry->port = conn->my_port;
                 entry->qp = conn->my_qp;
                 mac_str_to_bytes(conn->peer_mac, entry->host_mac);
+                memset(entry->padding, 0, sizeof(entry->padding));
             }
         }
     }
@@ -261,14 +261,15 @@ static int build_switch_path_table(const topology_config_t* config,
 
                 if (conn) {
                     entry->valid = 1;
-                    entry->next_hop_switch = next_hop_id;
+                    memset(entry->padding, 0, sizeof(entry->padding));
                     // 直接存储为主机字节序，便于Verilog硬件直接读取
                     entry->out_port = conn->my_port;
                     entry->out_qp = conn->my_qp;
-                    entry->distance = distances[j];
                     entry->next_hop_ip = ip_str_to_uint32(conn->peer_ip);
                     entry->next_hop_port = conn->peer_port;
                     entry->next_hop_qp = conn->peer_qp;
+                    mac_str_to_bytes(conn->peer_mac, entry->next_hop_mac);
+                    memset(entry->padding2, 0, sizeof(entry->padding2));
                 }
             }
         }
@@ -416,9 +417,9 @@ void print_routing_tables(const fpga_host_entry_t* host_table, uint32_t host_cou
     printf("有效路径条目: %u\n", valid_count);
 
     printf("\n有效路径详情:\n");
-    printf("%-8s %-8s %-12s %-8s %-6s %-6s\n",
-           "源交换机", "目标", "下一跳", "端口", "QP", "距离");
-    printf("--------------------------------------------------\n");
+    printf("%-8s %-8s %-8s %-6s %-20s\n",
+           "源交换机", "目标", "端口", "QP", "下一跳MAC");
+    printf("--------------------------------------------------------\n");
 
     for (uint32_t i = 0; i <= max_switch_id; i++) {
         for (uint32_t j = 0; j <= max_switch_id; j++) {
@@ -426,12 +427,13 @@ void print_routing_tables(const fpga_host_entry_t* host_table, uint32_t host_cou
             const fpga_switch_path_entry_t* entry = &switch_path_table[offset];
 
             if (entry->valid) {
-                printf("%-8u %-8u %-12u %-8u %-6u %-6u\n",
+                printf("%-8u %-8u %-8u %-6u %02x:%02x:%02x:%02x:%02x:%02x\n",
                        i, j,
-                       entry->next_hop_switch,
                        entry->out_port,
                        entry->out_qp,
-                       entry->distance);
+                       entry->next_hop_mac[0], entry->next_hop_mac[1],
+                       entry->next_hop_mac[2], entry->next_hop_mac[3],
+                       entry->next_hop_mac[4], entry->next_hop_mac[5]);
             }
         }
     }

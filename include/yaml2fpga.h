@@ -83,15 +83,14 @@ typedef struct {
     uint32_t reserved[2];
 } __attribute__((packed)) fpga_host_table_header_t;
 
-// 服务器接入表条目 (32字节)
+// 服务器接入表条目 (24字节 - 优化版本)
 typedef struct {
     uint32_t host_ip;            // 主机IP地址
     uint32_t switch_id;          // 接入交换机ID
-    uint32_t switch_ip;          // 接入交换机IP
     uint16_t port;               // 接入端口
     uint16_t qp;                 // 队列对编号
     uint8_t host_mac[6];         // 主机MAC地址
-    uint8_t reserved[10];
+    uint8_t padding[6];          // 对齐填充
 } __attribute__((packed)) fpga_host_entry_t;
 
 // 交换机路径表头 (16字节)
@@ -102,18 +101,19 @@ typedef struct {
     uint32_t reserved;
 } __attribute__((packed)) fpga_switch_path_header_t;
 
-// 交换机路径表条目 (16字节)
+// 交换机路径表条目 (24字节 - 增强版本)
 // 存储为二维数组扁平化: [src_sw0→dst_sw0][src_sw0→dst_sw1]...[src_swN→dst_swN]
 // 地址计算: base + (src_id * (max_id+1) + dst_id) * sizeof(entry)
 typedef struct {
     uint8_t valid;               // 是否有效 (1=有路径, 0=无路径或到自己)
-    uint8_t next_hop_switch;     // 下一跳交换机ID
+    uint8_t padding[3];          // 对齐填充
     uint16_t out_port;           // 出端口
     uint16_t out_qp;             // 出QP
-    uint16_t distance;           // 距离（跳数）
     uint32_t next_hop_ip;        // 下一跳IP地址
     uint16_t next_hop_port;      // 下一跳端口
     uint16_t next_hop_qp;        // 下一跳QP
+    uint8_t next_hop_mac[6];     // 下一跳MAC地址
+    uint8_t padding2[2];         // 对齐到24字节
 } __attribute__((packed)) fpga_switch_path_entry_t;
 
 // Error codes
