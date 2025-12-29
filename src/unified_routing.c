@@ -1,4 +1,3 @@
-// 统一路由表生成模块（方案3：树形拓扑优化）
 #include "yaml2fpga.h"
 #include <time.h>
 

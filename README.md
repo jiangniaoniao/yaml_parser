@@ -82,8 +82,6 @@ yaml_parser/
 ├── src/                        # C源代码
 │   ├── main.c                  # 主程序入口
 │   ├── yaml_parser.c           # YAML解析器
-│   ├── fpga_converter.c        # 旧格式转换器（保留）
-│   ├── flow_table.c            # 两级路由表生成器（保留）
 │   └── unified_routing.c       # 统一路由表生成器 主要使用
 │
 ├── include/

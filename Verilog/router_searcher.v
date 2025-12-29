@@ -1,18 +1,26 @@
-// 统一路由查找引擎 - 方案3：树形拓扑优化
-// 使用CAM（Content Addressable Memory）进行IP地址并行查找
-// 3-cycle pipeline: CAM match → BRAM read → Parse & Output
-//
-// Pipeline详细说明：
-// Cycle 0: 输入lookup_valid和lookup_dst_ip
-// Cycle 1: Stage 1 - CAM并行比较，输出match_idx
-// Cycle 2: Stage 2 - BRAM读取dest_table[match_idx]
-// Cycle 3: Stage 3 - 解析字段并输出结果
-//
-// 总延迟：3个时钟周期
-
 `timescale 1ns / 1ps
+//////////////////////////////////////////////////////////////////////////////////
+// Company: 
+// Engineer: 
+// 
+// Create Date: 2025/12/26 15:32:37
+// Design Name: 
+// Module Name: router_searcher
+// Project Name: 
+// Target Devices: 
+// Tool Versions: 
+// Description: 
+// 
+// Dependencies: 
+// 
+// Revision:
+// Revision 0.01 - File Created
+// Additional Comments:
+// 
+//////////////////////////////////////////////////////////////////////////////////
 
-module unified_routing_engine #(
+
+module router_searcher #(
     parameter MAX_ENTRIES = 64,        // 最大路由表条目数
     parameter ENTRY_WIDTH = 256,       // Entry宽度（32字节=256位）
     parameter IP_WIDTH = 32            // IP地址宽度
@@ -45,12 +53,12 @@ module unified_routing_engine #(
 
 // ============ 存储模块 ============
 
-// IP键数组（用于CAM比较，使用分布式RAM以获得零延迟）
+// IP键数组
 (* ram_style = "distributed" *)
 reg [IP_WIDTH-1:0] ip_keys [0:MAX_ENTRIES-1];
 reg                key_valid [0:MAX_ENTRIES-1];
 
-// 完整Entry数组（使用块RAM）
+// 完整Entry数组
 (* ram_style = "block" *)
 reg [ENTRY_WIDTH-1:0] dest_table [0:MAX_ENTRIES-1];
 

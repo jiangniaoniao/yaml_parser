@@ -1,9 +1,26 @@
-// 统一路由表读取器（使用Memory接口，参考routing_table_reader.v）
-// 从预加载的memory读取目的地路由表
-
 `timescale 1ns / 1ps
+//////////////////////////////////////////////////////////////////////////////////
+// Company: 
+// Engineer: 
+// 
+// Create Date: 2025/12/26 15:29:49
+// Design Name: 
+// Module Name: router_reader
+// Project Name: 
+// Target Devices: 
+// Tool Versions: 
+// Description: 
+// 
+// Dependencies: 
+// 
+// Revision:
+// Revision 0.01 - File Created
+// Additional Comments:
+// 
+//////////////////////////////////////////////////////////////////////////////////
 
-module unified_table_reader #(
+
+module router_reader #(
     parameter MAX_ENTRIES = 64
 )(
     input  wire         clk,
@@ -164,7 +181,7 @@ always @(posedge clk or negedge rst_n) begin
                         end
                     end else begin
                         // 读取最后一个字（word_idx=8时读取word[7]的数据）
-                        // 注意：此时mem_addr已经指向下一个Entry的起始位置，不再推进
+                        // 此时mem_addr已经指向下一个Entry的起始位置，不再推进
                         entry_buffer[7] <= mem_data;
                         state <= PARSE_ENTRY;
                     end

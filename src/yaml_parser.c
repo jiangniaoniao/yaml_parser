@@ -229,3 +229,35 @@ int parse_yaml_topology(const char* filename, topology_config_t* config) {
     
     return result;
 }
+// 打印拓扑摘要
+void print_topology_summary(const topology_config_t* config) {
+    printf("=== 拓扑摘要 ===\n");
+    printf("交换机数量: %u\n", config->switch_count);
+
+    int root_count = 0;
+    uint32_t total_connections = 0;
+
+    for (uint32_t i = 0; i < config->switch_count; i++) {
+        const switch_config_t* sw = &config->switches[i];
+
+        if (sw->is_root) {
+            root_count++;
+        }
+
+        total_connections += sw->connection_count;
+
+        printf("  交换机 %u (根节点: %s): %u 个连接\n",
+               sw->id, sw->is_root ? "是" : "否", sw->connection_count);
+    }
+
+    printf("总连接数: %u\n", total_connections);
+    printf("根交换机数量: %d\n", root_count);
+    printf("==================\n");
+}
+
+// 清理拓扑配置
+void cleanup_topology(topology_config_t* config) {
+    if (config) {
+        memset(config, 0, sizeof(topology_config_t));
+    }
+}

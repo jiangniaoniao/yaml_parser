@@ -1,9 +1,26 @@
-// 统一路由系统顶层模块（方案3优化版 - 使用Memory接口）
-// 集成ROM、table reader和routing engine
-
 `timescale 1ns / 1ps
+//////////////////////////////////////////////////////////////////////////////////
+// Company: 
+// Engineer: 
+// 
+// Create Date: 2025/12/26 15:28:10
+// Design Name: 
+// Module Name: router
+// Project Name: 
+// Target Devices: 
+// Tool Versions: 
+// Description: 
+// 
+// Dependencies: 
+// 
+// Revision:
+// Revision 0.01 - File Created
+// Additional Comments:
+// 
+//////////////////////////////////////////////////////////////////////////////////
 
-module unified_routing_top #(
+
+module router #(
     parameter ROUTING_TABLE_FILE = "fpga_config_routing.hex",  // hex格式文件
     parameter MAX_ENTRIES = 64,
     parameter MY_SWITCH_ID = 1,  // 本交换机ID
@@ -170,7 +187,7 @@ always @(posedge clk or negedge rst_n) begin
 end
 
 // ============ 实例化Table Reader ============
-unified_table_reader #(
+router_reader #(
     .MAX_ENTRIES(MAX_ENTRIES)
 ) table_reader_inst (
     .clk(clk),
@@ -193,7 +210,7 @@ unified_table_reader #(
 );
 
 // ============ 实例化Routing Engine ============
-unified_routing_engine #(
+router_searcher #(
     .MAX_ENTRIES(MAX_ENTRIES),
     .ENTRY_WIDTH(256),
     .IP_WIDTH(32)

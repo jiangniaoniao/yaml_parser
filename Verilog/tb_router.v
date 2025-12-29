@@ -1,9 +1,26 @@
-// 统一路由系统测试台（方案3优化版）
-// 测试三个Switch的路由表加载和查找功能
-
 `timescale 1ns / 1ps
+//////////////////////////////////////////////////////////////////////////////////
+// Company: 
+// Engineer: 
+// 
+// Create Date: 2025/12/26 15:35:30
+// Design Name: 
+// Module Name: tb_router
+// Project Name: 
+// Target Devices: 
+// Tool Versions: 
+// Description: 
+// 
+// Dependencies: 
+// 
+// Revision:
+// Revision 0.01 - File Created
+// Additional Comments:
+// 
+//////////////////////////////////////////////////////////////////////////////////
 
-module tb_unified_routing;
+
+module tb_router;
 
 // 时钟和复位
 reg clk;
@@ -36,13 +53,20 @@ initial begin
     forever #(CLK_PERIOD/2) clk = ~clk;
 end
 
+// 测试配置
+integer test_count = 16;  // 连续发送16个查询
+integer cycle_count = 0;
+integer resp_count = 0;
+integer start_cycle, end_cycle;
+integer first_resp_cycle;
+
 // 参数：测试哪个Switch
 // 1 = 根Switch, 2 = 中间Switch 2, 3 = 中间Switch 3
-parameter TEST_SWITCH_ID = 1;
+parameter TEST_SWITCH_ID = 2;
 
-// 实例化DUT（Device Under Test）
-unified_routing_top #(
-    .ROUTING_TABLE_FILE("fpga_config_routing.hex"),  // hex格式文件
+// 实例化DUT
+router #(
+    .ROUTING_TABLE_FILE("fpga_routing.hex"),  // hex格式文件
     .MAX_ENTRIES(64),
     .MY_SWITCH_ID(TEST_SWITCH_ID)
 ) dut (
@@ -91,7 +115,7 @@ task test_lookup;
 
         if (resp_valid) begin
             if (resp_found) begin
-                $display("       ✓ 查找成功!");
+                $display("        查找成功!");
                 $display("       - 输出端口: %d", resp_out_port);
                 $display("       - 输出QP: %d", resp_out_qp);
                 $display("       - 下一跳IP: %d.%d.%d.%d",
@@ -108,10 +132,10 @@ task test_lookup;
                 $display("       - 直连Host: %s", resp_is_direct_host ? "是" : "否");
                 $display("       - 广播: %s", resp_is_broadcast ? "是" : "否");
             end else begin
-                $display("       ✗ 查找失败 - 未找到路由");
+                $display("        查找失败 - 未找到路由");
             end
         end else begin
-            $display("       ✗ 响应无效");
+            $display("        响应无效");
         end
 
         repeat(3) @(posedge clk);
@@ -121,7 +145,6 @@ endtask
 // 主测试流程
 initial begin
     $display("========================================");
-    $display("统一路由系统测试台");
     $display("测试Switch ID: %d", TEST_SWITCH_ID);
     $display("========================================");
 
@@ -219,14 +242,6 @@ initial begin
 
     // ========== 性能测试：连续查表吞吐能力 ==========
     $display("\n========== 性能测试：连续查表吞吐能力 ==========");
-
-    // 测试配置
-    integer test_count = 16;  // 连续发送16个查询
-    integer cycle_count = 0;
-    integer resp_count = 0;
-    integer start_cycle, end_cycle;
-    integer first_resp_cycle;
-
     $display("连续发送 %0d 个查询请求，验证流水线吞吐量...", test_count);
 
     // 记录开始周期
@@ -297,11 +312,9 @@ initial begin
 
     if (resp_count == test_count) begin
         $display("  - 总处理周期：%0d（发送第1个到收到最后1个）", end_cycle - start_cycle);
-        $display("  - 平均吞吐量：%.2f 查询/周期",
-                 real'(test_count) / real'(end_cycle - start_cycle + 1));
-        $display("  ✓ 流水线吞吐量测试通过！");
+        $display("   流水线吞吐量测试通过！");
     end else begin
-        $display("  ✗ 警告：收到响应数(%0d)少于发送数(%0d)", resp_count, test_count);
+        $display("   警告：收到响应数(%0d)少于发送数(%0d)", resp_count, test_count);
     end
 
     repeat(10) @(posedge clk);
@@ -317,12 +330,6 @@ initial begin
     #(CLK_PERIOD * 100000);
     $display("[ERROR] 测试超时!");
     $finish;
-end
-
-// 波形输出（可选）
-initial begin
-    $dumpfile("tb_unified_routing.vcd");
-    $dumpvars(0, tb_unified_routing);
 end
 
 endmodule

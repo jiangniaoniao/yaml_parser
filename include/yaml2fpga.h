@@ -49,32 +49,7 @@ typedef struct {
     switch_config_t switches[MAX_SWITCHES];
 } topology_config_t;
 
-// FPGA configuration structure
-typedef struct {
-    uint32_t magic;           // 0x46475441 ("ATGF")
-    uint32_t version;         // Format version
-    uint32_t total_connections;// Total number of connections
-    uint32_t timestamp;       // Generation timestamp
-    uint8_t data[];          // Connection data follows
-} __attribute__((packed)) fpga_config_header_t;
-
-// Individual connection entry for FPGA
-typedef struct {
-    uint32_t switch_id;
-    uint32_t host_id;
-    uint32_t local_ip;
-    uint32_t peer_ip;
-    uint16_t local_port;
-    uint16_t peer_port;
-    uint16_t local_qp;
-    uint16_t peer_qp;
-    uint8_t local_mac[6];
-    uint8_t peer_mac[6];
-    uint8_t up;
-    uint8_t reserved[7];
-} __attribute__((packed)) fpga_connection_entry_t;
-
-// ============ 统一目的地路由表结构 (方案3: 树形拓扑优化) ============
+// ============ 统一目的地路由表结构 ============
 
 // 目的地路由表头 (16字节)
 typedef struct {
@@ -107,53 +82,13 @@ typedef struct {
     uint8_t  padding2[6];        // 对齐到32字节
 } __attribute__((packed)) fpga_dest_entry_t;
 
-// 广播配置表 (可选，用于AllReduce)
+// 广播配置表 预留
 typedef struct {
     uint8_t  child_count;        // 子节点数量
     uint8_t  padding[3];
     uint16_t child_ports[4];     // 子节点端口号（最多4个）
     uint16_t child_qps[4];       // 子节点QP号
 } __attribute__((packed)) fpga_broadcast_config_t;
-
-// ============ 兼容旧结构（保留用于对比测试）============
-
-// 服务器接入表头 (16字节)
-typedef struct {
-    uint32_t magic;              // 0x484F5354 ("HOST")
-    uint32_t host_count;         // 主机数量
-    uint32_t reserved[2];
-} __attribute__((packed)) fpga_host_table_header_t;
-
-// 服务器接入表条目 (24字节 - 优化版本)
-typedef struct {
-    uint32_t host_ip;            // 主机IP地址
-    uint32_t switch_id;          // 接入交换机ID
-    uint16_t port;               // 接入端口
-    uint16_t qp;                 // 队列对编号
-    uint8_t host_mac[6];         // 主机MAC地址
-    uint8_t padding[6];          // 对齐填充
-} __attribute__((packed)) fpga_host_entry_t;
-
-// 交换机路径表头 (16字节)
-typedef struct {
-    uint32_t magic;              // 0x53574348 ("SWCH")
-    uint32_t switch_count;       // 交换机数量
-    uint32_t max_switch_id;      // 最大交换机ID（用于计算数组大小）
-    uint32_t reserved;
-} __attribute__((packed)) fpga_switch_path_header_t;
-
-// 交换机路径表条目 (24字节 - 增强版本)
-typedef struct {
-    uint8_t valid;               // 是否有效 (1=有路径, 0=无路径或到自己)
-    uint8_t padding[3];          // 对齐填充
-    uint16_t out_port;           // 出端口
-    uint16_t out_qp;             // 出QP
-    uint32_t next_hop_ip;        // 下一跳IP地址
-    uint16_t next_hop_port;      // 下一跳端口
-    uint16_t next_hop_qp;        // 下一跳QP
-    uint8_t next_hop_mac[6];     // 下一跳MAC地址
-    uint8_t padding2[2];         // 对齐到24字节
-} __attribute__((packed)) fpga_switch_path_entry_t;
 
 // Error codes
 #define SUCCESS 0
@@ -163,12 +98,10 @@ typedef struct {
 
 // Function declarations
 int parse_yaml_topology(const char* filename, topology_config_t* config);
-int convert_to_fpga_format(const topology_config_t* config, uint8_t** output_data, size_t* output_size);
-int write_fpga_binary(const char* filename, const uint8_t* data, size_t size);
 void cleanup_topology(topology_config_t* config);
 void print_topology_summary(const topology_config_t* config);
 
-// ============ 统一路由表函数声明（方案3）============
+// 统一路由表函数声明
 int build_unified_routing_table(const topology_config_t* config,
                                  uint32_t switch_id,
                                  fpga_dest_entry_t** dest_table,
@@ -176,19 +109,5 @@ int build_unified_routing_table(const topology_config_t* config,
 int generate_unified_routing_binary(const topology_config_t* config,
                                      const char* output_filename);
 void print_dest_table(const fpga_dest_entry_t* dest_table, uint32_t entry_count, uint32_t switch_id);
-
-// ============ 旧版两级路由表函数声明（兼容）============
-int build_routing_tables(const topology_config_t* config,
-                         fpga_host_entry_t** host_table, uint32_t* host_count,
-                         fpga_switch_path_entry_t** switch_path_table,
-                         uint32_t* switch_count, uint32_t* max_switch_id);
-int generate_routing_table_binary(uint8_t** routing_data, size_t* routing_size,
-                                   const fpga_host_entry_t* host_table, uint32_t host_count,
-                                   const fpga_switch_path_entry_t* switch_path_table,
-                                   uint32_t switch_count, uint32_t max_switch_id);
-int write_routing_table_binary(const char* filename, const uint8_t* data, size_t size);
-void print_routing_tables(const fpga_host_entry_t* host_table, uint32_t host_count,
-                          const fpga_switch_path_entry_t* switch_path_table,
-                          uint32_t switch_count, uint32_t max_switch_id);
 
 #endif // YAML2FPGA_H
