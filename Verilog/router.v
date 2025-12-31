@@ -33,7 +33,7 @@ module router #(
     input  wire         lookup_valid,
     input  wire [31:0]  lookup_dst_ip,
 
-    // 响应接口（2 cycle延迟）
+    // 响应接口
     output wire         resp_valid,
     output wire         resp_found,
     output wire [15:0]  resp_out_port,
@@ -44,6 +44,7 @@ module router #(
     output wire [47:0]  resp_next_hop_mac,
     output wire         resp_is_direct_host,
     output wire         resp_is_broadcast,
+    output wire         resp_is_default_route,  // 新增：默认路由标志
 
     // 状态输出
     output wire         init_done,
@@ -238,7 +239,8 @@ router_searcher #(
     .resp_next_hop_qp(resp_next_hop_qp),
     .resp_next_hop_mac(resp_next_hop_mac),
     .resp_is_direct_host(resp_is_direct_host),
-    .resp_is_broadcast(resp_is_broadcast)
+    .resp_is_broadcast(resp_is_broadcast),
+    .resp_is_default_route(resp_is_default_route)  // 新增
 );
 
 endmodule

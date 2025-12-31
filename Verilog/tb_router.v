@@ -41,6 +41,7 @@ wire [15:0] resp_next_hop_qp;
 wire [47:0] resp_next_hop_mac;
 wire        resp_is_direct_host;
 wire        resp_is_broadcast;
+wire        resp_is_default_route;  // 新增：默认路由标志
 
 // 状态输出
 wire        init_done;
@@ -86,6 +87,7 @@ router #(
     .resp_next_hop_mac(resp_next_hop_mac),
     .resp_is_direct_host(resp_is_direct_host),
     .resp_is_broadcast(resp_is_broadcast),
+    .resp_is_default_route(resp_is_default_route),  // 新增
 
     .init_done(init_done),
     .init_error(init_error)
@@ -131,6 +133,7 @@ task test_lookup;
                          resp_next_hop_mac[15:8],  resp_next_hop_mac[7:0]);
                 $display("       - 直连Host: %s", resp_is_direct_host ? "是" : "否");
                 $display("       - 广播: %s", resp_is_broadcast ? "是" : "否");
+                $display("       - 默认路由: %s", resp_is_default_route ? "是" : "否");  // 新增
             end else begin
                 $display("        查找失败 - 未找到路由");
             end

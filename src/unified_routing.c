@@ -200,71 +200,73 @@ static int collect_all_hosts(const topology_config_t* config, uint32_t** host_ip
     return 0;
 }
 
-// ============ 核心函数：为指定交换机构建统一路由表 ============
+// ============ 核心函数：为指定交换机构建统一路由表（优化版）============
 int build_unified_routing_table(const topology_config_t* config,
                                  uint32_t switch_id,
                                  fpga_dest_entry_t** dest_table,
                                  uint32_t* entry_count) {
     printf("\n构建Switch %u的统一路由表...\n", switch_id);
 
-    // 收集所有Host
-    uint32_t* all_host_ips = NULL;
-    uint32_t total_hosts = 0;
-    if (collect_all_hosts(config, &all_host_ips, &total_hosts) != 0) {
-        return -1;
-    }
-
-    // 分配路由表内存
-    *dest_table = malloc(sizeof(fpga_dest_entry_t) * total_hosts);
-    if (!*dest_table) {
-        fprintf(stderr, "错误: 内存分配失败\n");
-        free(all_host_ips);
-        return -1;
-    }
-    memset(*dest_table, 0, sizeof(fpga_dest_entry_t) * total_hosts);
-
-    *entry_count = 0;
     bool is_root = is_root_switch(config, switch_id);
 
-    // 为每个Host生成路由条目
-    for (uint32_t i = 0; i < total_hosts; i++) {
-        uint32_t host_ip = all_host_ips[i];
-        fpga_dest_entry_t* entry = &(*dest_table)[*entry_count];
+    if (is_root) {
+        // ========== 根交换机：完整路由表 ==========
+        printf("  类型: 根交换机 - 生成完整路由表\n");
 
-        entry->dst_ip = host_ip;
-        entry->valid = 1;
-
-        // 判断Host相对于当前交换机的位置
-        uint32_t host_switch_id = find_host_attached_switch(config, host_ip);
-
-        if (host_switch_id == 0) {
-            fprintf(stderr, "警告: Host IP %08x 未找到所属交换机\n", host_ip);
-            continue;
+        // 收集所有Host
+        uint32_t* all_host_ips = NULL;
+        uint32_t total_hosts = 0;
+        if (collect_all_hosts(config, &all_host_ips, &total_hosts) != 0) {
+            return -1;
         }
 
-        if (host_switch_id == switch_id) {
-            // 情况1：直连Host
-            entry->is_direct_host = 1;
-            network_connection_t* conn = find_host_connection(config, switch_id, host_ip);
+        // 分配路由表内存
+        *dest_table = malloc(sizeof(fpga_dest_entry_t) * total_hosts);
+        if (!*dest_table) {
+            fprintf(stderr, "错误: 内存分配失败\n");
+            free(all_host_ips);
+            return -1;
+        }
+        memset(*dest_table, 0, sizeof(fpga_dest_entry_t) * total_hosts);
 
-            if (conn) {
-                entry->out_port = conn->my_port;
-                entry->out_qp = conn->my_qp;
-                entry->next_hop_ip = ip_str_to_uint32(conn->peer_ip);
-                entry->next_hop_port = conn->peer_port;
-                entry->next_hop_qp = conn->peer_qp;
-                mac_str_to_bytes(conn->peer_mac, entry->next_hop_mac);
+        *entry_count = 0;
 
-                printf("  [Entry %u] 直连Host: %s -> port=%u, QP=%u\n",
-                       *entry_count, conn->peer_ip, entry->out_port, entry->out_qp);
+        // 为每个Host生成路由条目
+        for (uint32_t i = 0; i < total_hosts; i++) {
+            uint32_t host_ip = all_host_ips[i];
+            fpga_dest_entry_t* entry = &(*dest_table)[*entry_count];
+
+            entry->dst_ip = host_ip;
+            entry->valid = 1;
+            entry->is_default_route = 0;
+
+            uint32_t host_switch_id = find_host_attached_switch(config, host_ip);
+
+            if (host_switch_id == 0) {
+                fprintf(stderr, "警告: Host IP %08x 未找到所属交换机\n", host_ip);
+                continue;
             }
 
-        } else {
-            // 情况2：非直连Host，需要路由
-            entry->is_direct_host = 0;
+            if (host_switch_id == switch_id) {
+                // 情况1：直连Host
+                entry->is_direct_host = 1;
+                network_connection_t* conn = find_host_connection(config, switch_id, host_ip);
 
-            if (is_root) {
-                // 根交换机：需要判断目标在哪个子树
+                if (conn) {
+                    entry->out_port = conn->my_port;
+                    entry->out_qp = conn->my_qp;
+                    entry->next_hop_ip = ip_str_to_uint32(conn->peer_ip);
+                    entry->next_hop_port = conn->peer_port;
+                    entry->next_hop_qp = conn->peer_qp;
+                    mac_str_to_bytes(conn->peer_mac, entry->next_hop_mac);
+
+                    printf("  [Entry %u] 直连Host: %s -> port=%u, QP=%u\n",
+                           *entry_count, conn->peer_ip, entry->out_port, entry->out_qp);
+                }
+
+            } else {
+                // 情况2：需要路由到子树
+                entry->is_direct_host = 0;
                 uint32_t subtree_switch = find_subtree_switch(config, switch_id, host_switch_id);
                 network_connection_t* conn = find_downlink_to_switch(config, switch_id, subtree_switch);
 
@@ -279,29 +281,104 @@ int build_unified_routing_table(const topology_config_t* config,
                     printf("  [Entry %u] 路由到子树Switch %u: host_ip=%08x -> next_hop=%s, port=%u, QP=%u\n",
                            *entry_count, subtree_switch, host_ip, conn->peer_ip, entry->out_port, entry->out_qp);
                 }
+            }
 
-            } else {
-                // 中间交换机：默认路由（向上转发）
-                network_connection_t* uplink = find_uplink_connection(config, switch_id);
+            (*entry_count)++;
+        }
 
-                if (uplink) {
-                    entry->out_port = uplink->my_port;
-                    entry->out_qp = uplink->my_qp;
-                    entry->next_hop_ip = ip_str_to_uint32(uplink->peer_ip);
-                    entry->next_hop_port = uplink->peer_port;
-                    entry->next_hop_qp = uplink->peer_qp;
-                    mac_str_to_bytes(uplink->peer_mac, entry->next_hop_mac);
+        free(all_host_ips);
 
-                    printf("  [Entry %u] 默认路由(向上): host_ip=%08x -> next_hop=%s, port=%u, QP=%u\n",
-                           *entry_count, host_ip, uplink->peer_ip, entry->out_port, entry->out_qp);
-                }
+    } else {
+        // ========== 非根交换机：直连主机 + 默认路由 ==========
+        printf("  类型: 非根交换机 - 生成直连主机表 + 默认路由\n");
+
+        // 收集所有Host
+        uint32_t* all_host_ips = NULL;
+        uint32_t total_hosts = 0;
+        if (collect_all_hosts(config, &all_host_ips, &total_hosts) != 0) {
+            return -1;
+        }
+
+        // 统计直连主机数量
+        uint32_t direct_host_count = 0;
+        for (uint32_t i = 0; i < total_hosts; i++) {
+            uint32_t host_switch_id = find_host_attached_switch(config, all_host_ips[i]);
+            if (host_switch_id == switch_id) {
+                direct_host_count++;
             }
         }
 
+        // 分配内存：直连主机 + 1条默认路由
+        uint32_t table_size = direct_host_count + 1;
+        *dest_table = malloc(sizeof(fpga_dest_entry_t) * table_size);
+        if (!*dest_table) {
+            fprintf(stderr, "错误: 内存分配失败\n");
+            free(all_host_ips);
+            return -1;
+        }
+        memset(*dest_table, 0, sizeof(fpga_dest_entry_t) * table_size);
+
+        *entry_count = 0;
+
+        // 添加直连主机条目
+        for (uint32_t i = 0; i < total_hosts; i++) {
+            uint32_t host_ip = all_host_ips[i];
+            uint32_t host_switch_id = find_host_attached_switch(config, host_ip);
+
+            if (host_switch_id == switch_id) {
+                fpga_dest_entry_t* entry = &(*dest_table)[*entry_count];
+
+                entry->dst_ip = host_ip;
+                entry->valid = 1;
+                entry->is_direct_host = 1;
+                entry->is_default_route = 0;
+
+                network_connection_t* conn = find_host_connection(config, switch_id, host_ip);
+                if (conn) {
+                    entry->out_port = conn->my_port;
+                    entry->out_qp = conn->my_qp;
+                    entry->next_hop_ip = ip_str_to_uint32(conn->peer_ip);
+                    entry->next_hop_port = conn->peer_port;
+                    entry->next_hop_qp = conn->peer_qp;
+                    mac_str_to_bytes(conn->peer_mac, entry->next_hop_mac);
+
+                    printf("  [Entry %u] 直连Host: %s -> port=%u, QP=%u\n",
+                           *entry_count, conn->peer_ip, entry->out_port, entry->out_qp);
+                }
+
+                (*entry_count)++;
+            }
+        }
+
+        // 添加默认路由条目（向上转发）
+        fpga_dest_entry_t* default_entry = &(*dest_table)[*entry_count];
+        default_entry->dst_ip = 0xFFFFFFFF;  // 特殊标记：默认路由
+        default_entry->valid = 1;
+        default_entry->is_direct_host = 0;
+        default_entry->is_default_route = 1;
+
+        network_connection_t* uplink = find_uplink_connection(config, switch_id);
+        if (uplink) {
+            default_entry->out_port = uplink->my_port;
+            default_entry->out_qp = uplink->my_qp;
+            default_entry->next_hop_ip = ip_str_to_uint32(uplink->peer_ip);
+            default_entry->next_hop_port = uplink->peer_port;
+            default_entry->next_hop_qp = uplink->peer_qp;
+            mac_str_to_bytes(uplink->peer_mac, default_entry->next_hop_mac);
+
+            printf("  [Entry %u] 默认路由(向上): next_hop=%s, port=%u, QP=%u\n",
+                   *entry_count, uplink->peer_ip, default_entry->out_port, default_entry->out_qp);
+        } else {
+            fprintf(stderr, "错误: 非根交换机 %u 没有找到上行连接\n", switch_id);
+            free(*dest_table);
+            free(all_host_ips);
+            return -1;
+        }
+
         (*entry_count)++;
+        free(all_host_ips);
     }
 
-    free(all_host_ips);
     printf("Switch %u 路由表构建完成，共 %u 条目\n", switch_id, *entry_count);
     return 0;
 }
@@ -363,11 +440,12 @@ void print_dest_table(const fpga_dest_entry_t* dest_table, uint32_t entry_count,
         if (!e->valid) continue;
 
         printf("[Entry %u]\n", i);
-        printf("  dst_ip:         %u.%u.%u.%u\n",
+        printf("  dst_ip:          %u.%u.%u.%u\n",
                (e->dst_ip >> 24) & 0xFF, (e->dst_ip >> 16) & 0xFF,
                (e->dst_ip >> 8) & 0xFF, e->dst_ip & 0xFF);
-        printf("  is_direct_host: %u\n", e->is_direct_host);
-        printf("  is_broadcast:   %u\n", e->is_broadcast);
+        printf("  is_direct_host:  %u\n", e->is_direct_host);
+        printf("  is_broadcast:    %u\n", e->is_broadcast);
+        printf("  is_default_route: %u\n", e->is_default_route);
         printf("  out_port:       %u\n", e->out_port);
         printf("  out_qp:         %u\n", e->out_qp);
         printf("  next_hop_ip:    %u.%u.%u.%u\n",

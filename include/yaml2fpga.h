@@ -63,13 +63,13 @@ typedef struct {
 // 每个Switch存储到所有目标（Host/Switch）的路由信息
 typedef struct {
     // 匹配字段
-    uint32_t dst_ip;             // 目标IP地址（匹配键）
+    uint32_t dst_ip;             // 目标IP地址（匹配键，默认路由时为0xFFFFFFFF）
     uint8_t  valid;              // 有效位
 
     // 特殊标志
     uint8_t  is_direct_host;     // 是否直连Host (1=直连, 0=需转发)
     uint8_t  is_broadcast;       // AllReduce下行时是否广播
-    uint8_t  padding1;
+    uint8_t  is_default_route;   // 是否为默认路由 (非根交换机的fallback)
 
     // 转发动作
     uint16_t out_port;           // 输出端口
@@ -79,7 +79,7 @@ typedef struct {
     uint16_t next_hop_qp;        // 下一跳QP
     uint8_t  next_hop_mac[6];    // 下一跳MAC地址
 
-    uint8_t  padding2[6];        // 对齐到32字节
+    uint8_t  padding[6];         // 对齐到32字节
 } __attribute__((packed)) fpga_dest_entry_t;
 
 // 广播配置表 预留

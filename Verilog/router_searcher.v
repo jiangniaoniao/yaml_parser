@@ -38,7 +38,7 @@ module router_searcher #(
     input  wire                     lookup_valid,
     input  wire [IP_WIDTH-1:0]      lookup_dst_ip,
 
-    // 响应接口（3 cycle延迟）
+    // 响应接口
     output reg                      resp_valid,
     output reg                      resp_found,
     output reg [15:0]               resp_out_port,
@@ -48,10 +48,15 @@ module router_searcher #(
     output reg [15:0]               resp_next_hop_qp,
     output reg [47:0]               resp_next_hop_mac,
     output reg                      resp_is_direct_host,
-    output reg                      resp_is_broadcast
+    output reg                      resp_is_broadcast,
+    output reg                      resp_is_default_route  // 新增：标识是否使用了默认路由
 );
 
 // ============ 存储模块 ============
+
+// 默认路由支持
+reg [5:0]  default_route_addr;  // 默认路由条目地址
+reg        default_route_valid; // 是否存在默认路由
 
 // IP键数组
 (* ram_style = "distributed" *)
@@ -66,16 +71,29 @@ reg [ENTRY_WIDTH-1:0] dest_table [0:MAX_ENTRIES-1];
 integer i;
 always @(posedge clk or negedge rst_n) begin
     if (!rst_n) begin
+        default_route_valid <= 1'b0;
+        default_route_addr <= 6'd0;
         for (i = 0; i < MAX_ENTRIES; i = i + 1) begin
             key_valid[i] <= 1'b0;
             ip_keys[i] <= 32'h0;
             dest_table[i] <= {ENTRY_WIDTH{1'b0}};
         end
     end else if (init_mode && init_entry_wr) begin
-        // 写入IP键和完整Entry
-        ip_keys[init_entry_addr] <= init_entry_data[31:0];  // dst_ip在[31:0]
-        key_valid[init_entry_addr] <= init_entry_data[32];  // valid位在[32]
-        dest_table[init_entry_addr] <= init_entry_data;
+        // 检查是否为默认路由（dst_ip = 0xFFFFFFFF, is_default_route = 1）
+        if (init_entry_data[31:0] == 32'hFFFFFFFF && init_entry_data[56] == 1'b1) begin
+            // 这是默认路由条目
+            default_route_valid <= 1'b1;
+            default_route_addr <= init_entry_addr;
+            dest_table[init_entry_addr] <= init_entry_data;
+            // 默认路由不加入CAM
+            key_valid[init_entry_addr] <= 1'b0;
+            ip_keys[init_entry_addr] <= 32'h0;
+        end else begin
+            // 正常条目：写入IP键和完整Entry
+            ip_keys[init_entry_addr] <= init_entry_data[31:0];  // dst_ip在[31:0]
+            key_valid[init_entry_addr] <= init_entry_data[32];  // valid位在[32]
+            dest_table[init_entry_addr] <= init_entry_data;
+        end
     end
 end
 
@@ -110,17 +128,33 @@ end
 reg        lookup_valid_s1;
 reg [5:0]  match_idx_s1;
 reg        match_found_s1;
+reg        use_default_route_s1;  // 新增：是否使用默认路由
 
 always @(posedge clk or negedge rst_n) begin
     if (!rst_n) begin
         lookup_valid_s1 <= 1'b0;
         match_idx_s1 <= 6'd0;
         match_found_s1 <= 1'b0;
+        use_default_route_s1 <= 1'b0;
     end else begin
         // 只在非初始化模式时接受新查询
         lookup_valid_s1 <= (!init_mode) ? lookup_valid : 1'b0;
-        match_idx_s1 <= match_idx;
-        match_found_s1 <= match_found;
+
+        // 如果CAM找到匹配，使用匹配的地址
+        // 如果CAM未找到但存在默认路由，使用默认路由
+        if (match_found) begin
+            match_idx_s1 <= match_idx;
+            match_found_s1 <= 1'b1;
+            use_default_route_s1 <= 1'b0;
+        end else if (default_route_valid) begin
+            match_idx_s1 <= default_route_addr;
+            match_found_s1 <= 1'b1;
+            use_default_route_s1 <= 1'b1;
+        end else begin
+            match_idx_s1 <= 6'd0;
+            match_found_s1 <= 1'b0;
+            use_default_route_s1 <= 1'b0;
+        end
     end
 end
 
@@ -136,18 +170,21 @@ always @(posedge clk or negedge rst_n) begin
     end
 end
 
-// Stage 2 流水线寄存器（传递valid和found信号）
+// Stage 2 流水线寄存器（传递valid、found和use_default_route信号）
 reg        lookup_valid_s2;
 reg        match_found_s2;
+reg        use_default_route_s2;  // 新增
 
 always @(posedge clk or negedge rst_n) begin
     if (!rst_n) begin
         lookup_valid_s2 <= 1'b0;
         match_found_s2 <= 1'b0;
+        use_default_route_s2 <= 1'b0;
     end else begin
         // 流水线传递，不受init_mode影响
         lookup_valid_s2 <= lookup_valid_s1;
         match_found_s2 <= match_found_s1;
+        use_default_route_s2 <= use_default_route_s1;
     end
 end
 
@@ -166,6 +203,7 @@ always @(posedge clk or negedge rst_n) begin
         resp_next_hop_mac <= 48'h0;
         resp_is_direct_host <= 1'b0;
         resp_is_broadcast <= 1'b0;
+        resp_is_default_route <= 1'b0;
     end else begin
         // 只在非初始化模式时输出有效结果
         resp_valid <= lookup_valid_s2 && !init_mode;
@@ -181,6 +219,7 @@ always @(posedge clk or negedge rst_n) begin
             resp_next_hop_mac   <= entry_data_s2[207:160];
             resp_is_direct_host <= entry_data_s2[40];
             resp_is_broadcast   <= entry_data_s2[48];
+            resp_is_default_route <= use_default_route_s2;  // 使用默认路由标志
         end else begin
             resp_out_port       <= 16'h0;
             resp_out_qp         <= 16'h0;
@@ -190,6 +229,7 @@ always @(posedge clk or negedge rst_n) begin
             resp_next_hop_mac   <= 48'h0;
             resp_is_direct_host <= 1'b0;
             resp_is_broadcast   <= 1'b0;
+            resp_is_default_route <= 1'b0;
         end
     end
 end
